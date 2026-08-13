@@ -1,0 +1,23 @@
+# Secrets — injected at runtime via env_file, never baked into the image
+.env
+*.env
+
+# Mounted at runtime, must not be copied into the image
+data/
+media/
+db.sqlite3
+
+# Local development artefacts
+venv/
+env/
+.venv/
+__pycache__/
+*.py[cod]
+staticfiles/
+
+.git/
+.gitignore
+.vscode/
+.idea/
+
+*.md

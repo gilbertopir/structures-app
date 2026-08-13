@@ -1,0 +1,19 @@
+services:
+  web:
+    build: .
+    container_name: structures_app
+    restart: unless-stopped
+    ports:
+      # Bound to loopback only — cloudflared reaches it from the Pi
+      # itself, so there is no reason to expose it to the LAN.
+      - "127.0.0.1:8002:8002"
+    volumes:
+      # The database lives in ./data, which is mounted — so a rebuild
+      # never touches it. Photos likewise in ./media.
+      - ./data:/app/data
+      - ./media:/app/media
+    env_file:
+      - .env
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             gunicorn config.wsgi:application --config gunicorn.conf.py"
