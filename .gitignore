@@ -36,3 +36,7 @@ Thumbs.db
 
 #other
 users_list.txt
+
+data/
+media/
+staticfiles/
