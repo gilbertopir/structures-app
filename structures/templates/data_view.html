@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}Data — Structures Inspection{% endblock %}
+{% block accent %}#495057{% endblock %}
+{% block accent_soft %}#e9ecef{% endblock %}
+{% block theme_colour %}#495057{% endblock %}
+{% block nav_data %}active{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h5><i class="bi bi-table me-2"></i>Captured data</h5>
+    <small>{{ visit }} — assets with recorded data only</small>
+</div>
+
+<div class="row g-2 mb-3">
+    <div class="col-4">
+        <div class="metric-card text-center">
+            <div class="metric-label">Structures</div>
+            <div class="metric-value">{{ str_count }}</div>
+        </div>
+    </div>
+    <div class="col-4">
+        <div class="metric-card text-center">
+            <div class="metric-label">Culverts</div>
+            <div class="metric-value">{{ cul_count }}</div>
+        </div>
+    </div>
+    <div class="col-4">
+        <div class="metric-card text-center">
+            <div class="metric-label">Photos</div>
+            <div class="metric-value">{{ photo_count }}</div>
+        </div>
+    </div>
+</div>
+
+{% for row in rows %}
+<a href="{% url 'asset_detail' row.asset.structure_code %}" class="asset-card"
+   style="border-left-color: {% if row.asset.asset_type == 'STR' %}#0d6efd{% else %}#0d9488{% endif %}">
+    <div class="d-flex justify-content-between align-items-start">
+        <div class="pe-2">
+            <div class="code">{{ row.asset.structure_code }}</div>
+            <div class="details">{{ row.asset.type_details|default:"—" }}</div>
+            <div class="route">
+                Updated {{ row.inspection.updated_at|date:"j M Y, H:i" }}
+                {% if row.inspection.updated_by %} · {{ row.inspection.updated_by.username }}{% endif %}
+            </div>
+        </div>
+        <div class="text-end flex-shrink-0">
+            {% if row.inspection.status == "complete" %}
+                <span class="badge text-bg-success badge-status">Complete</span>
+            {% else %}
+                <span class="badge text-bg-warning badge-status">{{ row.done }}/{{ row.total }}</span>
+            {% endif %}
+            <div class="route mt-1">
+                <i class="bi bi-camera"></i> {{ row.photos }}
+            </div>
+        </div>
+    </div>
+</a>
+{% empty %}
+<div class="text-center text-muted py-5">
+    <i class="bi bi-clipboard-x" style="font-size:2.5rem"></i>
+    <p class="mt-2 mb-0">No data captured yet.</p>
+    <p class="small">Assets appear here once an inspection has been started.</p>
+</div>
+{% endfor %}
+
+{% if rows %}
+<button class="btn btn-outline-secondary w-100 mt-2 mb-3" disabled>
+    <i class="bi bi-file-earmark-excel me-1"></i>Export to Excel (coming soon)
+</button>
+{% endif %}
+{% endblock %}

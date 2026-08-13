@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}{{ asset.structure_code }} — Structures Inspection{% endblock %}
+{% block accent %}{{ accent }}{% endblock %}
+{% block accent_soft %}{{ accent_soft }}{% endblock %}
+{% block theme_colour %}{{ accent }}{% endblock %}
+{% block nav_str %}{% if asset.asset_type == "STR" %}active{% endif %}{% endblock %}
+{% block nav_cul %}{% if asset.asset_type == "CUL" %}active{% endif %}{% endblock %}
+
+{% block content %}
+<div class="asset-header">
+    <div class="d-flex justify-content-between align-items-start">
+        <div>
+            <div class="code">{{ asset.structure_code }}</div>
+            <div class="meta">{{ asset.type_details|default:"—" }}</div>
+            <div class="meta">
+                {{ asset.route_new }}
+                {% if asset.route_old %}({{ asset.route_old }}){% endif %}
+                · Batch {{ asset.batch|default:"—" }}
+            </div>
+        </div>
+        <div class="text-end">
+            {% if asset.google_maps_url %}
+            <a href="{{ asset.google_maps_url }}" target="_blank" rel="noopener"
+               class="btn btn-sm btn-outline-light">
+                <i class="bi bi-geo-alt-fill"></i>
+            </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-2">
+    <div class="fw-semibold">Inspection sections</div>
+    <span class="badge text-bg-light text-muted">{{ done }}/{{ total }} complete</span>
+</div>
+
+<div class="progress mb-3" style="height:6px">
+    <div class="progress-bar" role="progressbar"
+         style="width: {{ percent }}%; background: var(--accent)"
+         aria-valuenow="{{ percent }}" aria-valuemin="0" aria-valuemax="100"></div>
+</div>
+
+{% for section in sections %}
+<div class="section-row">
+    <i class="bi {{ section.icon }} section-icon"></i>
+    <div class="flex-grow-1">
+        <div class="section-label">{{ section.label }}</div>
+        <div class="section-meta">
+            {{ section.field_count }} field{{ section.field_count|pluralize }}
+            · up to {{ section.photos }} photo{{ section.photos|pluralize }}
+        </div>
+    </div>
+    <div>
+        {% if section.is_complete %}
+            <i class="bi bi-check-circle-fill text-success"></i>
+        {% else %}
+            <i class="bi bi-circle text-muted"></i>
+        {% endif %}
+    </div>
+</div>
+{% endfor %}
+
+<div class="alert alert-secondary mt-3 small" role="alert">
+    <i class="bi bi-info-circle me-1"></i>
+    Capture is not wired up yet — this screen shows the section structure
+    for review. Each section will open one at a time, saving as you go.
+</div>
+
+<a href="{% if asset.asset_type == 'STR' %}{% url 'structure_list' %}{% else %}{% url 'culvert_list' %}{% endif %}"
+   class="btn btn-outline-secondary w-100 mb-3">
+    <i class="bi bi-arrow-left me-1"></i>Back to list
+</a>
+{% endblock %}

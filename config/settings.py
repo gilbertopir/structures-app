@@ -126,3 +126,9 @@ MAILERS = {
         'BACKEND': 'django.core.mail.backends.console.EmailBackend',
     },
 }
+
+TEMPLATES[0]["DIRS"] = [BASE_DIR / "structures" / "templates"]
+
+LOGIN_URL = "/login/"
+LOGIN_REDIRECT_URL = "/structures/"
+LOGOUT_REDIRECT_URL = "/login/"

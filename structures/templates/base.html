@@ -1,0 +1,187 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <meta name="theme-color" content="{% block theme_colour %}#0d6efd{% endblock %}">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Structures">
+    <title>{% block title %}Structures Inspection{% endblock %}</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+
+    <style>
+        /* Accent colour switches per asset type: blue for STR, teal for CUL.
+           Every themed surface reads from this one variable. */
+        :root {
+            --accent: {% block accent %}#0d6efd{% endblock %};
+            --accent-soft: {% block accent_soft %}#e7f1ff{% endblock %};
+        }
+
+        body {
+            font-size: 1rem;
+            padding-bottom: 80px;
+            background: #f7f7f9;
+        }
+
+        /* Larger touch targets for gloved / one-handed field use */
+        .btn { min-height: 3rem; font-size: 1rem; font-weight: 600; }
+        .btn-lg { min-height: 3.5rem; font-size: 1.1rem; }
+        .form-control, .form-select { min-height: 3rem; font-size: 1rem; }
+
+        .navbar-accent { background: var(--accent); }
+        .navbar-brand { font-weight: 700; font-size: 1.1rem; }
+
+        .page-header {
+            background: var(--accent);
+            color: white;
+            padding: 0.75rem 1rem;
+            margin-bottom: 1rem;
+            border-radius: 0 0 10px 10px;
+        }
+        .page-header h5 { margin: 0; font-weight: 700; }
+        .page-header small { opacity: 0.85; }
+
+        /* Sticky asset header — stays visible while scrolling a long form */
+        .asset-header {
+            background: var(--accent);
+            color: white;
+            border-radius: 10px;
+            padding: 0.75rem 1rem;
+            margin-bottom: 1rem;
+            position: sticky;
+            top: 0;
+            z-index: 900;
+        }
+        .asset-header .code { font-weight: 700; font-size: 1.1rem; }
+        .asset-header .meta { font-size: 0.8rem; opacity: 0.9; }
+        .asset-header a { color: white; }
+
+        .metric-card {
+            background: #fff;
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+            padding: 0.75rem 1rem;
+            margin-bottom: 0.75rem;
+        }
+        .metric-card .metric-label {
+            font-size: 0.75rem;
+            color: #6c757d;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .metric-card .metric-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #212529;
+        }
+
+        .asset-card {
+            background: #fff;
+            border: 1px solid #e9ecef;
+            border-left: 4px solid var(--accent);
+            border-radius: 0;
+            padding: 0.75rem 1rem;
+            margin-bottom: 0.6rem;
+            display: block;
+            text-decoration: none;
+            color: inherit;
+        }
+        .asset-card:active { background: var(--accent-soft); }
+        .asset-card .code { font-weight: 700; font-size: 1.05rem; color: #212529; }
+        .asset-card .details { font-size: 0.85rem; color: #6c757d; }
+        .asset-card .route { font-size: 0.75rem; color: #adb5bd; }
+
+        .badge-status { font-size: 0.7rem; font-weight: 600; }
+
+        .section-row {
+            background: #fff;
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+            padding: 0.75rem 1rem;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        .section-row i.section-icon { font-size: 1.3rem; color: var(--accent); }
+        .section-row .section-label { font-weight: 600; }
+        .section-row .section-meta { font-size: 0.75rem; color: #6c757d; }
+
+        .bottom-nav {
+            position: fixed;
+            bottom: 0; left: 0; right: 0;
+            background: #fff;
+            border-top: 1px solid #dee2e6;
+            display: flex;
+            z-index: 1000;
+        }
+        .bottom-nav a {
+            flex: 1;
+            text-align: center;
+            padding: 0.5rem 0.25rem;
+            color: #6c757d;
+            text-decoration: none;
+            font-size: 0.7rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .bottom-nav a.active { color: var(--accent); }
+        .bottom-nav a i { font-size: 1.4rem; margin-bottom: 2px; }
+    </style>
+
+    {% block extra_css %}{% endblock %}
+</head>
+
+<body>
+    {% if user.is_authenticated %}
+    <nav class="navbar navbar-dark navbar-accent px-3 py-2">
+        <a class="navbar-brand" href="{% url 'structure_list' %}">
+            <i class="bi bi-bank me-1"></i>Structures Inspection
+        </a>
+        <div class="d-flex align-items-center gap-2">
+            <span class="text-white-50 small">{{ user.username }}</span>
+            <a href="{% url 'logout' %}" class="btn btn-outline-light btn-sm py-1">
+                <i class="bi bi-box-arrow-right"></i>
+            </a>
+        </div>
+    </nav>
+    {% endif %}
+
+    {% if messages %}
+    <div class="container-fluid px-3 mt-2">
+        {% for message in messages %}
+        <div class="alert alert-{{ message.tags }} alert-dismissible fade show py-2" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <main class="container-fluid px-3 mt-2">
+        {% block content %}{% endblock %}
+    </main>
+
+    {% if user.is_authenticated %}
+    <nav class="bottom-nav">
+        <a href="{% url 'structure_list' %}" class="{% block nav_str %}{% endblock %}">
+            <i class="bi bi-bank"></i>Structures
+        </a>
+        <a href="{% url 'culvert_list' %}" class="{% block nav_cul %}{% endblock %}">
+            <i class="bi bi-water"></i>Culverts
+        </a>
+        <a href="{% url 'data_view' %}" class="{% block nav_data %}{% endblock %}">
+            <i class="bi bi-table"></i>Data
+        </a>
+    </nav>
+    {% endif %}
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>
