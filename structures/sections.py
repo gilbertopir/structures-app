@@ -40,7 +40,7 @@ STR_SECTIONS = [
             "carriageway_lhs_verge_width_mm",
             "carriageway_notes",
         ],
-        "photos": 3,
+        "photos": 4,
     },
     {
         "key": "parapet",
@@ -55,7 +55,7 @@ STR_SECTIONS = [
             "parapet_lhs_height_mm",
             "parapet_notes",
         ],
-        "photos": 3,
+        "photos": 4,
     },
     {
         "key": "soffit_arch",
@@ -66,7 +66,7 @@ STR_SECTIONS = [
             "soffit_thickness_mm",
             "soffit_notes",
         ],
-        "photos": 3,
+        "photos": 4,
     },
     {
         "key": "abutments_pier",
@@ -77,7 +77,7 @@ STR_SECTIONS = [
             "abutment_thickness_mm",
             "abutment_notes",
         ],
-        "photos": 3,
+        "photos": 4,
     },
     {
         "key": "headwall",
@@ -87,7 +87,7 @@ STR_SECTIONS = [
             "headwall_height_mm",
             "headwall_notes",
         ],
-        "photos": 3,
+        "photos": 4,
     },
     {
         "key": "wingwalls",
@@ -96,7 +96,7 @@ STR_SECTIONS = [
         "fields": [
             "wingwall_notes",
         ],
-        "photos": 3,
+        "photos": 4,
     },
     {
         "key": "concrete",
@@ -106,7 +106,7 @@ STR_SECTIONS = [
             "concrete_reinforced",
             "concrete_notes",
         ],
-        "photos": 3,
+        "photos": 4,
     },
     {
         "key": "masonry",
@@ -119,7 +119,7 @@ STR_SECTIONS = [
             "masonry_arch_barrel_joint_thickness_mm",
             "masonry_notes",
         ],
-        "photos": 3,
+        "photos": 4,
     },
     {
         "key": "overall_condition",
@@ -129,7 +129,7 @@ STR_SECTIONS = [
             "overall_condition",
             "overall_condition_notes",
         ],
-        "photos": 3,
+        "photos": 4,
     },
     {
         "key": "general_notes",
@@ -138,7 +138,7 @@ STR_SECTIONS = [
         "fields": [
             "general_notes",
         ],
-        "photos": 3,
+        "photos": 4,
     },
 ]
 
@@ -160,7 +160,7 @@ CUL_SECTIONS = [
             "carriageway_lhs_verge_width_mm",
             "carriageway_notes",
         ],
-        "photos": 3,
+        "photos": 4,
     },
     {
         "key": "headwall",
@@ -175,7 +175,7 @@ CUL_SECTIONS = [
             "headwall_lhs_height_mm",
             "headwall_notes",
         ],
-        "photos": 3,
+        "photos": 4,
     },
     {
         "key": "box",
@@ -189,7 +189,7 @@ CUL_SECTIONS = [
             "box_cover_depth_mm",
             "box_notes",
         ],
-        "photos": 3,
+        "photos": 4,
     },
     {
         "key": "pipe",
@@ -201,7 +201,7 @@ CUL_SECTIONS = [
             "pipe_cover_depth_mm",
             "pipe_notes",
         ],
-        "photos": 3,
+        "photos": 4,
     },
     {
         "key": "overall_condition",
@@ -211,7 +211,7 @@ CUL_SECTIONS = [
             "overall_condition",
             "overall_condition_notes",
         ],
-        "photos": 3,
+        "photos": 4,
     },
     {
         "key": "general_notes",
@@ -220,7 +220,7 @@ CUL_SECTIONS = [
         "fields": [
             "general_notes",
         ],
-        "photos": 3,
+        "photos": 4,
     },
 ]
 

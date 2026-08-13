@@ -11,10 +11,21 @@ from django.utils import timezone
 from django.utils.text import slugify
 from django.views.decorators.http import require_POST
 
-from .exports import asset_photo_stats, build_asset_zip, build_full_workbook
+from .exports import (
+    _display_value,
+    _field_label,
+    asset_photo_stats,
+    build_asset_zip,
+    build_full_workbook,
+)
 from .forms import build_section_form
-from .models import Asset, Inspection, SectionProgress
-from .sections import get_sections, is_valid_section, section_count
+from .models import Asset, Inspection, InspectionPhoto, SectionProgress
+from .sections import (
+    get_sections,
+    is_valid_section,
+    photo_limit,
+    section_count,
+)
 
 # The visit this survey round belongs to. Lives here for now; move to
 # settings or a picker when a second round starts.
@@ -145,6 +156,10 @@ def asset_detail(request, structure_code):
         record.section_key: record for record in inspection.section_progress.all()
     }
 
+    photos_by_section = {}
+    for photo in inspection.photos.all():
+        photos_by_section.setdefault(photo.section_key, []).append(photo)
+
     data_instance = inspection.data
 
     sections = []
@@ -159,6 +174,8 @@ def asset_detail(request, structure_code):
                 "field_count": len(section["fields"]),
                 "is_complete": bool(record and record.is_complete),
                 "saved_at": record.saved_at if record else None,
+                "existing_photos": photos_by_section.get(section["key"], []),
+                "photo_count": len(photos_by_section.get(section["key"], [])),
                 "form": build_section_form(
                     asset.asset_type, section["key"], instance=data_instance
                 ),
@@ -243,6 +260,171 @@ def commit_section(request, structure_code, section_key):
             "percent": int(done / total * 100) if total else 0,
             "status": inspection.status,
             "saved_at": timezone.localtime().strftime("%H:%M"),
+        }
+    )
+
+
+# ---------------------------------------------------------------------
+# Report — read-only view of everything captured for one asset
+# ---------------------------------------------------------------------
+@login_required
+def asset_report(request, structure_code):
+    """One scroll: every section, its values and its photos.
+
+    Empty sections are shown rather than hidden - on a report, knowing
+    a section was not inspected is itself information, and hiding it
+    would make an incomplete record look finished.
+    """
+    asset = get_object_or_404(Asset, structure_code=structure_code.upper())
+    inspection = Inspection.objects.filter(asset=asset, visit=CURRENT_VISIT).first()
+
+    data = inspection.data if inspection else None
+    model = type(data) if data is not None else None
+    complete_keys = inspection.completed_section_keys if inspection else set()
+
+    photos_by_section = {}
+    if inspection:
+        for photo in inspection.photos.all():
+            photos_by_section.setdefault(photo.section_key, []).append(photo)
+
+    sections = []
+    total_photos = 0
+    for section in get_sections(asset.asset_type):
+        rows = []
+        for field_name in section["fields"]:
+            label = _field_label(model, field_name) if model else field_name
+            value = _display_value(data, field_name)
+            rows.append(
+                {
+                    "label": str(label).capitalize(),
+                    "value": value,
+                    "is_blank": value in (None, ""),
+                }
+            )
+
+        photos = photos_by_section.get(section["key"], [])
+        total_photos += len(photos)
+
+        sections.append(
+            {
+                "key": section["key"],
+                "label": section["label"],
+                "icon": section["icon"],
+                "rows": rows,
+                "photos": photos,
+                "is_complete": section["key"] in complete_keys,
+                "has_values": any(not r["is_blank"] for r in rows),
+            }
+        )
+
+    context = {
+        "asset": asset,
+        "inspection": inspection,
+        "sections": sections,
+        "done": len(complete_keys),
+        "total": len(sections),
+        "total_photos": total_photos,
+        "visit": CURRENT_VISIT,
+        **ACCENTS.get(asset.asset_type, ACCENTS["STR"]),
+    }
+    return render(request, "report.html", context)
+
+
+# ---------------------------------------------------------------------
+# Photos
+# ---------------------------------------------------------------------
+def _reject_reviewer(request):
+    """Read-only accounts may browse but not change anything."""
+    profile = getattr(request.user, "profile", None)
+    if profile is not None and profile.is_reviewer():
+        return JsonResponse(
+            {"ok": False, "error": "Your account is read only."}, status=403
+        )
+    return None
+
+
+@login_required
+@require_POST
+def upload_photo(request, structure_code, section_key):
+    """One photo, one request.
+
+    Photos are sent as soon as they are picked rather than bundled
+    with the section commit, so a failure costs a single photo and the
+    inspector can carry on while the rest upload behind them.
+    """
+    asset = get_object_or_404(Asset, structure_code=structure_code.upper())
+
+    rejection = _reject_reviewer(request)
+    if rejection is not None:
+        return rejection
+
+    if not is_valid_section(asset.asset_type, section_key):
+        return JsonResponse(
+            {"ok": False, "error": "Unknown section for this asset type."}, status=400
+        )
+
+    upload = request.FILES.get("photo")
+    if upload is None:
+        return JsonResponse({"ok": False, "error": "No photo received."}, status=400)
+
+    inspection = _get_or_create_inspection(asset, request.user)
+
+    limit = photo_limit(asset.asset_type, section_key)
+    existing = inspection.photos.filter(section_key=section_key).count()
+    if existing >= limit:
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": f"This section already holds {limit} photos.",
+            },
+            status=400,
+        )
+
+    photo = InspectionPhoto.objects.create(
+        inspection=inspection,
+        section_key=section_key,
+        photo=upload,
+        order=existing,
+        uploaded_by=request.user,
+    )
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "id": photo.id,
+            "url": photo.photo.url,
+            "name": os.path.basename(photo.photo.name),
+            "count": existing + 1,
+            "limit": limit,
+        }
+    )
+
+
+@login_required
+@require_POST
+def delete_photo(request, structure_code, photo_id):
+    asset = get_object_or_404(Asset, structure_code=structure_code.upper())
+
+    rejection = _reject_reviewer(request)
+    if rejection is not None:
+        return rejection
+
+    photo = get_object_or_404(
+        InspectionPhoto,
+        id=photo_id,
+        inspection__asset=asset,
+        inspection__visit=CURRENT_VISIT,
+    )
+    section_key = photo.section_key
+    inspection = photo.inspection
+    photo.delete()
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "section": section_key,
+            "count": inspection.photos.filter(section_key=section_key).count(),
+            "limit": photo_limit(asset.asset_type, section_key),
         }
     )
 

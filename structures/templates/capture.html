@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}{{ asset.structure_code }} — Structures Inspection{% endblock %}
 {% block accent %}{{ accent }}{% endblock %}
@@ -76,6 +77,86 @@
     .toast-saved.error { background: #dc3545; }
     .toast-saved.warn  { background: #ffc107; color: #212529; }
 
+    .photo-block {
+        background: #fff;
+        border: 1px solid #e9ecef;
+        border-radius: 10px;
+        padding: 0.75rem 1rem;
+        margin-bottom: 1rem;
+    }
+    .photo-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.5rem;
+        margin: 0.6rem 0;
+    }
+    .photo-grid:empty { margin: 0; }
+    .photo-item {
+        position: relative;
+        aspect-ratio: 1;
+        border-radius: 8px;
+        overflow: hidden;
+        background: #f1f3f5;
+    }
+    .photo-item img {
+        width: 100%; height: 100%;
+        object-fit: cover;
+        display: block;
+    }
+    .photo-item .overlay {
+        position: absolute;
+        inset: 0;
+        background: rgba(0,0,0,0.55);
+        color: #fff;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.7rem;
+        gap: 4px;
+        text-align: center;
+        padding: 4px;
+    }
+    .photo-item.done .overlay { display: none; }
+    .photo-item .remove {
+        position: absolute;
+        top: 4px; right: 4px;
+        width: 26px; height: 26px;
+        border-radius: 50%;
+        border: none;
+        background: rgba(0,0,0,0.6);
+        color: #fff;
+        font-size: 0.8rem;
+        line-height: 1;
+        display: none;
+        padding: 0;
+    }
+    .photo-item.done .remove { display: block; }
+    .photo-item .retry {
+        border: none;
+        background: #ffc107;
+        color: #212529;
+        border-radius: 6px;
+        font-size: 0.65rem;
+        font-weight: 700;
+        padding: 3px 8px;
+    }
+
+    .upload-pill {
+        position: fixed;
+        left: 50%;
+        transform: translateX(-50%);
+        bottom: 140px;
+        background: #212529;
+        color: #fff;
+        border-radius: 20px;
+        padding: 0.35rem 0.9rem;
+        font-size: 0.78rem;
+        font-weight: 600;
+        z-index: 1050;
+        display: none;
+    }
+
     .uncommitted-banner {
         background: #fff3cd;
         border: 1px solid #ffe69c;
@@ -140,6 +221,11 @@
                 {% else %}
                     {{ section.field_count }} field{{ section.field_count|pluralize }}
                 {% endif %}
+                <span id="hubphoto-{{ section.key }}">
+                    {% if section.photo_count %}
+                        · <i class="bi bi-camera"></i> {{ section.photo_count }}
+                    {% endif %}
+                </span>
             </div>
         </div>
         <div class="state-dot {% if section.is_complete %}done{% endif %}"
@@ -148,8 +234,13 @@
     </div>
     {% endfor %}
 
+    <a href="{% url 'asset_report' asset.structure_code %}"
+       class="btn btn-outline-dark w-100 mt-3">
+        <i class="bi bi-file-text me-1"></i>View report
+    </a>
+
     <a href="{% if asset.asset_type == 'STR' %}{% url 'structure_list' %}{% else %}{% url 'culvert_list' %}{% endif %}"
-       class="btn btn-outline-secondary w-100 mt-3 mb-3">
+       class="btn btn-outline-secondary w-100 mt-2 mb-3">
         <i class="bi bi-arrow-left me-1"></i>Back to list
     </a>
 </div>
@@ -194,6 +285,39 @@
         {% endfor %}
     </form>
 
+    <div class="photo-block">
+        <div class="d-flex justify-content-between align-items-center">
+            <div class="fw-semibold">
+                <i class="bi bi-camera me-1" style="color:var(--accent)"></i>Photos
+            </div>
+            <span class="small text-muted" id="pcount-{{ section.key }}">
+                {{ section.photo_count }} / {{ section.photos }}
+            </span>
+        </div>
+
+        <div class="photo-grid" id="pgrid-{{ section.key }}">
+            {% for photo in section.existing_photos %}
+            <div class="photo-item done" data-photo-id="{{ photo.id }}">
+                <img src="{{ photo.photo.url }}" alt="">
+                <div class="overlay"></div>
+                <button type="button" class="remove" data-remove="{{ photo.id }}">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+            {% endfor %}
+        </div>
+
+        <input type="file" accept="image/*" multiple hidden
+               id="pinput-{{ section.key }}" data-input="{{ section.key }}">
+        <button type="button" class="btn btn-outline-secondary w-100"
+                data-add-photo="{{ section.key }}">
+            <i class="bi bi-images me-2"></i>Add photos
+        </button>
+        <div class="small text-muted mt-2">
+            Photos upload as soon as you pick them. Your originals stay on the phone.
+        </div>
+    </div>
+
     <div class="commit-bar">
         <button type="button" class="btn btn-primary w-100"
                 style="background:var(--accent);border-color:var(--accent)"
@@ -207,10 +331,12 @@
 </div>
 {% endfor %}
 
+<div class="upload-pill" id="uploadPill"></div>
 <div class="toast-saved" id="toast"></div>
 {% endblock %}
 
 {% block extra_js %}
+<script src="{% static 'js/resize.js' %}"></script>
 <script>
 (function () {
     const CODE = "{{ asset.structure_code }}";
@@ -357,10 +483,175 @@
         button.addEventListener('click', () => commit(button.dataset.commit, button));
     });
 
+    // -----------------------------------------------------------------
+    // Photos
+    // -----------------------------------------------------------------
+    const PHOTO_LIMITS = {
+        {% for section in sections %}"{{ section.key }}": {{ section.photos }}{% if not forloop.last %},{% endif %}
+        {% endfor %}
+    };
+
+    let uploading = 0;
+
+    function csrf() {
+        return document.querySelector('[name=csrfmiddlewaretoken]').value;
+    }
+
+    function refreshPill() {
+        const pill = document.getElementById('uploadPill');
+        if (uploading === 0) {
+            pill.style.display = 'none';
+            return;
+        }
+        pill.textContent = uploading + ' photo' + (uploading > 1 ? 's' : '') + ' uploading…';
+        pill.style.display = 'block';
+    }
+
+    function updatePhotoCount(key) {
+        const grid = document.getElementById('pgrid-' + key);
+        const done = grid.querySelectorAll('.photo-item.done').length;
+        document.getElementById('pcount-' + key).textContent =
+            done + ' / ' + PHOTO_LIMITS[key];
+        document.getElementById('hubphoto-' + key).innerHTML =
+            done ? ' · <i class="bi bi-camera"></i> ' + done : '';
+    }
+
+    function slotsLeft(key) {
+        const grid = document.getElementById('pgrid-' + key);
+        return PHOTO_LIMITS[key] - grid.querySelectorAll('.photo-item').length;
+    }
+
+    function makeTile(grid, file) {
+        const tile = document.createElement('div');
+        tile.className = 'photo-item';
+        tile.innerHTML =
+            '<img src="' + URL.createObjectURL(file) + '" alt="">' +
+            '<div class="overlay"><span class="spinner-border spinner-border-sm"></span></div>' +
+            '<button type="button" class="remove"><i class="bi bi-x-lg"></i></button>';
+        grid.appendChild(tile);
+        return tile;
+    }
+
+    function setTileState(tile, state, message, onRetry) {
+        const overlay = tile.querySelector('.overlay');
+        if (state === 'done') {
+            tile.classList.add('done');
+            return;
+        }
+        tile.classList.remove('done');
+        overlay.innerHTML = '';
+        const label = document.createElement('div');
+        label.textContent = message;
+        overlay.appendChild(label);
+        if (onRetry) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'retry';
+            button.textContent = 'Retry';
+            button.addEventListener('click', event => {
+                event.stopPropagation();
+                onRetry();
+            });
+            overlay.appendChild(button);
+        }
+    }
+
+    async function uploadOne(key, file, tile) {
+        setTileState(tile, 'busy', '');
+        tile.querySelector('.overlay').innerHTML =
+            '<span class="spinner-border spinner-border-sm"></span>';
+        uploading += 1;
+        refreshPill();
+
+        try {
+            const resized = await resizeImage(file);
+            const payload = new FormData();
+            payload.append('photo', resized);
+
+            const response = await fetch(
+                '/asset/' + encodeURIComponent(CODE) + '/section/' + key + '/photo/',
+                { method: 'POST', headers: { 'X-CSRFToken': csrf() }, body: payload }
+            );
+            const result = await response.json();
+            if (!response.ok || !result.ok) {
+                throw new Error(result.error || 'Upload failed');
+            }
+
+            tile.dataset.photoId = result.id;
+            tile.querySelector('.remove').dataset.remove = result.id;
+            setTileState(tile, 'done');
+            updatePhotoCount(key);
+        } catch (error) {
+            setTileState(tile, 'failed', 'Failed', () => uploadOne(key, file, tile));
+            showToast('Photo not uploaded — ' + error.message, 'error');
+        } finally {
+            uploading -= 1;
+            refreshPill();
+        }
+    }
+
+    async function addPhotos(key, files) {
+        const remaining = slotsLeft(key);
+        if (remaining <= 0) {
+            showToast('This section already holds ' + PHOTO_LIMITS[key] + ' photos.', 'warn');
+            return;
+        }
+        const chosen = Array.from(files).slice(0, remaining);
+        if (files.length > remaining) {
+            showToast('Only ' + remaining + ' slot' + (remaining > 1 ? 's' : '') +
+                      ' left — the first ' + remaining + ' were added.', 'warn');
+        }
+
+        const grid = document.getElementById('pgrid-' + key);
+        // Sequential rather than parallel: on a weak uplink, four at
+        // once is slower overall and harder to report on.
+        for (const file of chosen) {
+            const tile = makeTile(grid, file);
+            await uploadOne(key, file, tile);
+        }
+    }
+
+    document.querySelectorAll('[data-add-photo]').forEach(button => {
+        const key = button.dataset.addPhoto;
+        const input = document.getElementById('pinput-' + key);
+        button.addEventListener('click', () => input.click());
+        input.addEventListener('change', () => {
+            if (input.files.length) addPhotos(key, input.files);
+            input.value = '';
+        });
+    });
+
+    document.querySelectorAll('.photo-grid').forEach(grid => {
+        const key = grid.id.replace('pgrid-', '');
+        grid.addEventListener('click', async event => {
+            const button = event.target.closest('[data-remove]');
+            if (!button) return;
+            const tile = button.closest('.photo-item');
+            if (!confirm('Delete this photo?')) return;
+
+            try {
+                const response = await fetch(
+                    '/asset/' + encodeURIComponent(CODE) + '/photo/' +
+                    button.dataset.remove + '/delete/',
+                    { method: 'POST', headers: { 'X-CSRFToken': csrf() } }
+                );
+                const result = await response.json();
+                if (!response.ok || !result.ok) {
+                    throw new Error(result.error || 'Delete failed');
+                }
+                tile.remove();
+                updatePhotoCount(key);
+                showToast('Photo deleted', 'success');
+            } catch (error) {
+                showToast('Not deleted — ' + error.message, 'error');
+            }
+        });
+    });
+
     // Only warn when leaving the app would actually lose something.
     // Moving between hub and sections keeps everything in the DOM.
     window.addEventListener('beforeunload', event => {
-        if (dirty.size > 0) {
+        if (dirty.size > 0 || uploading > 0) {
             event.preventDefault();
             event.returnValue = '';
         }
