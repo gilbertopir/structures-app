@@ -1,0 +1,38 @@
+# Environment and secrets
+.env
+*.env
+
+# Database
+db.sqlite3
+
+# Media files (photos uploaded on site)
+media/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.py[cod]
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Static files collected
+staticfiles/
+
+# VS Code
+.vscode/
+
+# Django
+local_settings.py
+
+# OS
+.DS_Store
+Thumbs.db
+
+#other
+users_list.txt
