@@ -1,0 +1,370 @@
+{% extends "base.html" %}
+
+{% block title %}{{ asset.structure_code }} — Structures Inspection{% endblock %}
+{% block accent %}{{ accent }}{% endblock %}
+{% block accent_soft %}{{ accent_soft }}{% endblock %}
+{% block theme_colour %}{{ accent }}{% endblock %}
+{% block nav_str %}{% if asset.asset_type == "STR" %}active{% endif %}{% endblock %}
+{% block nav_cul %}{% if asset.asset_type == "CUL" %}active{% endif %}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .state-dot {
+        width: 12px; height: 12px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        background: #dee2e6;
+    }
+    .state-dot.dirty { background: #ffc107; }
+    .state-dot.done  { background: #198754; }
+
+    .section-row { cursor: pointer; }
+    .section-row:active { background: var(--accent-soft); }
+
+    .field-label {
+        font-weight: 600;
+        font-size: 0.9rem;
+        margin-bottom: 0.25rem;
+    }
+    .radio-group { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .radio-group label {
+        flex: 1;
+        min-width: 90px;
+        border: 1px solid #ced4da;
+        border-radius: 8px;
+        padding: 0.75rem 0.5rem;
+        text-align: center;
+        font-weight: 600;
+        background: #fff;
+        cursor: pointer;
+        margin: 0;
+    }
+    .radio-group input { display: none; }
+    .radio-group input:checked + span {
+        display: block;
+        color: var(--accent);
+    }
+    .radio-group label:has(input:checked) {
+        border-color: var(--accent);
+        background: var(--accent-soft);
+        color: var(--accent);
+    }
+
+    .commit-bar {
+        position: sticky;
+        bottom: 70px;
+        background: #f7f7f9;
+        padding: 0.75rem 0 0.5rem;
+        z-index: 800;
+    }
+
+    .toast-saved {
+        position: fixed;
+        left: 50%;
+        transform: translateX(-50%);
+        bottom: 90px;
+        background: #198754;
+        color: #fff;
+        padding: 0.6rem 1.1rem;
+        border-radius: 24px;
+        font-weight: 600;
+        font-size: 0.9rem;
+        z-index: 1100;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+        display: none;
+    }
+    .toast-saved.error { background: #dc3545; }
+    .toast-saved.warn  { background: #ffc107; color: #212529; }
+
+    .uncommitted-banner {
+        background: #fff3cd;
+        border: 1px solid #ffe69c;
+        border-radius: 10px;
+        padding: 0.6rem 0.9rem;
+        margin-bottom: 0.75rem;
+        font-size: 0.85rem;
+        color: #664d03;
+        display: none;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="asset-header">
+    <div class="d-flex justify-content-between align-items-start">
+        <div>
+            <div class="code">{{ asset.structure_code }}</div>
+            <div class="meta">{{ asset.type_details|default:"—" }}</div>
+            <div class="meta">
+                {{ asset.route_new }}
+                {% if asset.route_old %}({{ asset.route_old }}){% endif %}
+                · Batch {{ asset.batch|default:"—" }}
+            </div>
+        </div>
+        {% if asset.google_maps_url %}
+        <a href="{{ asset.google_maps_url }}" target="_blank" rel="noopener"
+           class="btn btn-sm btn-outline-light">
+            <i class="bi bi-geo-alt-fill"></i>
+        </a>
+        {% endif %}
+    </div>
+</div>
+
+<!-- ============ HUB ============ -->
+<div id="hub">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <div class="fw-semibold">Inspection sections</div>
+        <span class="badge text-bg-light text-muted">
+            <span id="doneCount">{{ done }}</span>/{{ total }} complete
+        </span>
+    </div>
+
+    <div class="progress mb-3" style="height:6px">
+        <div id="progressBar" class="progress-bar" role="progressbar"
+             style="width: {{ percent }}%; background: var(--accent)"></div>
+    </div>
+
+    <div class="uncommitted-banner" id="uncommittedBanner">
+        <i class="bi bi-exclamation-triangle-fill me-1"></i>
+        <span id="uncommittedText"></span>
+    </div>
+
+    {% for section in sections %}
+    <div class="section-row" data-open="{{ section.key }}">
+        <i class="bi {{ section.icon }} section-icon"></i>
+        <div class="flex-grow-1">
+            <div class="section-label">{{ section.label }}</div>
+            <div class="section-meta" id="meta-{{ section.key }}">
+                {% if section.is_complete %}
+                    Saved {{ section.saved_at|date:"j M, H:i" }}
+                {% else %}
+                    {{ section.field_count }} field{{ section.field_count|pluralize }}
+                {% endif %}
+            </div>
+        </div>
+        <div class="state-dot {% if section.is_complete %}done{% endif %}"
+             id="dot-{{ section.key }}"></div>
+        <i class="bi bi-chevron-right text-muted"></i>
+    </div>
+    {% endfor %}
+
+    <a href="{% if asset.asset_type == 'STR' %}{% url 'structure_list' %}{% else %}{% url 'culvert_list' %}{% endif %}"
+       class="btn btn-outline-secondary w-100 mt-3 mb-3">
+        <i class="bi bi-arrow-left me-1"></i>Back to list
+    </a>
+</div>
+
+<!-- ============ SECTION PANELS ============ -->
+{% for section in sections %}
+<div class="section-panel" id="panel-{{ section.key }}" style="display:none">
+
+    <div class="d-flex align-items-center gap-2 mb-3">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-back>
+            <i class="bi bi-arrow-left"></i>
+        </button>
+        <div>
+            <div class="fw-bold">
+                <i class="bi {{ section.icon }} me-1" style="color:var(--accent)"></i>
+                {{ section.label }}
+            </div>
+            <div class="text-muted" style="font-size:0.75rem">
+                {{ asset.structure_code }}
+            </div>
+        </div>
+    </div>
+
+    <form data-section="{{ section.key }}" autocomplete="off">
+        {% csrf_token %}
+        {% for field in section.form %}
+        <div class="mb-3">
+            <div class="field-label">{{ field.label }}</div>
+            {% if field.field.widget.input_type == "radio" %}
+                <div class="radio-group">
+                    {% for radio in field %}
+                    <label>
+                        {{ radio.tag }}
+                        <span>{{ radio.choice_label }}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+            {% else %}
+                {{ field }}
+            {% endif %}
+        </div>
+        {% endfor %}
+    </form>
+
+    <div class="commit-bar">
+        <button type="button" class="btn btn-primary w-100"
+                style="background:var(--accent);border-color:var(--accent)"
+                data-commit="{{ section.key }}">
+            <i class="bi bi-cloud-upload me-2"></i>Commit section
+        </button>
+        <button type="button" class="btn btn-link w-100 text-muted" data-back>
+            Back to sections
+        </button>
+    </div>
+</div>
+{% endfor %}
+
+<div class="toast-saved" id="toast"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    const CODE = "{{ asset.structure_code }}";
+    const hub = document.getElementById('hub');
+    const panels = document.querySelectorAll('.section-panel');
+    const toast = document.getElementById('toast');
+    const dirty = new Set();
+
+    let openKey = null;
+
+    // variant: 'success' (default), 'error', or 'warn'
+    function showToast(message, variant) {
+        toast.textContent = message;
+        toast.classList.toggle('error', variant === 'error');
+        toast.classList.toggle('warn', variant === 'warn');
+        toast.style.display = 'block';
+        clearTimeout(toast._timer);
+        const linger = variant === 'success' || !variant ? 2600 : 4200;
+        toast._timer = setTimeout(() => { toast.style.display = 'none'; }, linger);
+    }
+
+    // Standing reminder on the hub of anything still to push.
+    function refreshBanner() {
+        const banner = document.getElementById('uncommittedBanner');
+        const text = document.getElementById('uncommittedText');
+        if (dirty.size === 0) {
+            banner.style.display = 'none';
+            return;
+        }
+        const labels = Array.from(dirty).map(
+            key => document.querySelector('[data-open="' + key + '"] .section-label').textContent.trim()
+        );
+        text.textContent =
+            dirty.size + ' section' + (dirty.size > 1 ? 's have' : ' has') +
+            ' data that has not been committed: ' + labels.join(', ') + '.';
+        banner.style.display = 'block';
+    }
+
+    function showHub() {
+        panels.forEach(p => p.style.display = 'none');
+        hub.style.display = '';
+        openKey = null;
+        refreshBanner();
+        window.scrollTo(0, 0);
+    }
+
+    // Leaving a section keeps everything in the DOM, so nothing is lost
+    // yet - but the inspector should know it has not reached the server.
+    function backFromSection() {
+        const leaving = openKey;
+        showHub();
+        if (leaving && dirty.has(leaving)) {
+            showToast(
+                'Not committed yet — this section will be lost if you close the app.',
+                'warn'
+            );
+        }
+    }
+
+    function showSection(key) {
+        hub.style.display = 'none';
+        panels.forEach(p => p.style.display = 'none');
+        document.getElementById('panel-' + key).style.display = '';
+        openKey = key;
+        window.scrollTo(0, 0);
+    }
+
+    // Hub navigation — no network, no page load.
+    document.querySelectorAll('[data-open]').forEach(row => {
+        row.addEventListener('click', () => showSection(row.dataset.open));
+    });
+    document.querySelectorAll('[data-back]').forEach(btn => {
+        btn.addEventListener('click', backFromSection);
+    });
+
+    // Any edit marks the section amber until it is committed.
+    document.querySelectorAll('.section-panel form').forEach(form => {
+        const key = form.dataset.section;
+        form.addEventListener('input', () => {
+            dirty.add(key);
+            const dot = document.getElementById('dot-' + key);
+            dot.classList.add('dirty');
+            dot.classList.remove('done');
+            refreshBanner();
+        });
+    });
+
+    function isFormEmpty(form) {
+        const data = new FormData(form);
+        for (const [name, value] of data.entries()) {
+            if (name === 'csrfmiddlewaretoken') continue;
+            if (String(value).trim() !== '') return false;
+        }
+        return true;
+    }
+
+    async function commit(key, button) {
+        const form = document.querySelector('#panel-' + key + ' form');
+
+        if (isFormEmpty(form)) {
+            const proceed = confirm(
+                "This section is empty — no data has been entered.\n\n" +
+                "Commit it anyway and mark it complete?"
+            );
+            if (!proceed) return;
+        }
+
+        const original = button.innerHTML;
+        button.disabled = true;
+        button.innerHTML =
+            '<span class="spinner-border spinner-border-sm me-2"></span>Saving…';
+
+        try {
+            const response = await fetch(
+                '/asset/' + encodeURIComponent(CODE) + '/section/' + key + '/commit/',
+                { method: 'POST', body: new FormData(form) }
+            );
+            const result = await response.json();
+
+            if (!response.ok || !result.ok) {
+                throw new Error(result.error || 'Save failed');
+            }
+
+            dirty.delete(key);
+            const dot = document.getElementById('dot-' + key);
+            dot.classList.remove('dirty');
+            dot.classList.add('done');
+            document.getElementById('meta-' + key).textContent =
+                'Saved ' + result.saved_at;
+            document.getElementById('doneCount').textContent = result.done;
+            document.getElementById('progressBar').style.width = result.percent + '%';
+
+            showToast('Saved to server', 'success');
+            showHub();
+        } catch (error) {
+            showToast('Not saved — ' + error.message + '. Try again.', 'error');
+        } finally {
+            button.disabled = false;
+            button.innerHTML = original;
+        }
+    }
+
+    document.querySelectorAll('[data-commit]').forEach(button => {
+        button.addEventListener('click', () => commit(button.dataset.commit, button));
+    });
+
+    // Only warn when leaving the app would actually lose something.
+    // Moving between hub and sections keeps everything in the DOM.
+    window.addEventListener('beforeunload', event => {
+        if (dirty.size > 0) {
+            event.preventDefault();
+            event.returnValue = '';
+        }
+    });
+})();
+</script>
+{% endblock %}
