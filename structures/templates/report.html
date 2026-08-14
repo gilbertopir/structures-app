@@ -94,8 +94,8 @@
 <div class="row g-2 mb-3">
     <div class="col-4">
         <div class="metric-card text-center">
-            <div class="metric-label">Sections</div>
-            <div class="metric-value">{{ done }}/{{ total }}</div>
+            <div class="metric-label">Recorded</div>
+            <div class="metric-value">{{ percent }}%</div>
         </div>
     </div>
     <div class="col-4">
@@ -108,7 +108,9 @@
         <div class="metric-card text-center">
             <div class="metric-label">Status</div>
             <div class="metric-value" style="font-size:0.95rem">
-                {% if inspection %}{{ inspection.get_status_display }}{% else %}Not started{% endif %}
+                {% if inspection.is_complete %}
+                    <span class="text-success">Complete</span>
+                {% elif inspection %}{{ inspection.get_status_display }}{% else %}Not started{% endif %}
             </div>
         </div>
     </div>
@@ -128,8 +130,10 @@
     <div class="head">
         <i class="bi {{ section.icon }} sec"></i>
         <span class="label">{{ section.label }}</span>
-        {% if section.is_complete %}
-            <i class="bi bi-check-circle-fill text-success"></i>
+        {% if section.countable %}
+            <span class="small {% if section.percent == 100 %}text-success fw-bold{% else %}text-muted{% endif %}">
+                {{ section.filled }}/{{ section.countable }}
+            </span>
         {% endif %}
     </div>
 
@@ -143,13 +147,7 @@
         </div>
         {% endfor %}
     {% else %}
-        <div class="not-recorded">
-            {% if section.is_complete %}
-                Committed with no data recorded.
-            {% else %}
-                Not recorded.
-            {% endif %}
-        </div>
+        <div class="not-recorded">Not recorded.</div>
     {% endif %}
 
     {% if section.photos %}

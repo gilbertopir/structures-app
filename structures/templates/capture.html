@@ -10,27 +10,30 @@
 
 {% block extra_css %}
 <style>
-    .state-dot {
-        width: 12px; height: 12px;
-        border-radius: 50%;
-        flex-shrink: 0;
-        background: #dee2e6;
-    }
-    .state-dot.dirty { background: #ffc107; }
-    .state-dot.done  { background: #198754; }
-
     .section-row { cursor: pointer; }
     .section-row:active { background: var(--accent-soft); }
 
-    .field-label {
-        font-weight: 600;
-        font-size: 0.9rem;
-        margin-bottom: 0.25rem;
+    .cover-bar {
+        height: 4px;
+        background: #e9ecef;
+        border-radius: 2px;
+        margin-top: 5px;
+        overflow: hidden;
     }
+    .cover-bar span {
+        display: block;
+        height: 100%;
+        background: #ffc107;
+        transition: width 0.3s;
+    }
+    .cover-bar span.full { background: #198754; }
+    .cover-bar span.none { background: transparent; }
+
+    .field-label { font-weight: 600; font-size: 0.9rem; margin-bottom: 0.25rem; }
+
     .radio-group { display: flex; gap: 0.5rem; flex-wrap: wrap; }
     .radio-group label {
-        flex: 1;
-        min-width: 90px;
+        flex: 1; min-width: 90px;
         border: 1px solid #ced4da;
         border-radius: 8px;
         padding: 0.75rem 0.5rem;
@@ -41,41 +44,11 @@
         margin: 0;
     }
     .radio-group input { display: none; }
-    .radio-group input:checked + span {
-        display: block;
-        color: var(--accent);
-    }
     .radio-group label:has(input:checked) {
         border-color: var(--accent);
         background: var(--accent-soft);
         color: var(--accent);
     }
-
-    .commit-bar {
-        position: sticky;
-        bottom: 70px;
-        background: #f7f7f9;
-        padding: 0.75rem 0 0.5rem;
-        z-index: 800;
-    }
-
-    .toast-saved {
-        position: fixed;
-        left: 50%;
-        transform: translateX(-50%);
-        bottom: 90px;
-        background: #198754;
-        color: #fff;
-        padding: 0.6rem 1.1rem;
-        border-radius: 24px;
-        font-weight: 600;
-        font-size: 0.9rem;
-        z-index: 1100;
-        box-shadow: 0 4px 16px rgba(0,0,0,0.2);
-        display: none;
-    }
-    .toast-saved.error { background: #dc3545; }
-    .toast-saved.warn  { background: #ffc107; color: #212529; }
 
     .photo-block {
         background: #fff;
@@ -98,74 +71,63 @@
         overflow: hidden;
         background: #f1f3f5;
     }
-    .photo-item img {
-        width: 100%; height: 100%;
-        object-fit: cover;
-        display: block;
-    }
+    .photo-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .photo-item .overlay {
-        position: absolute;
-        inset: 0;
+        position: absolute; inset: 0;
         background: rgba(0,0,0,0.55);
         color: #fff;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        font-size: 0.7rem;
-        gap: 4px;
-        text-align: center;
-        padding: 4px;
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        font-size: 0.7rem; gap: 4px; text-align: center; padding: 4px;
     }
     .photo-item.done .overlay { display: none; }
     .photo-item .remove {
-        position: absolute;
-        top: 4px; right: 4px;
+        position: absolute; top: 4px; right: 4px;
         width: 26px; height: 26px;
-        border-radius: 50%;
-        border: none;
+        border-radius: 50%; border: none;
         background: rgba(0,0,0,0.6);
-        color: #fff;
-        font-size: 0.8rem;
-        line-height: 1;
-        display: none;
-        padding: 0;
+        color: #fff; font-size: 0.8rem; line-height: 1;
+        display: none; padding: 0;
     }
     .photo-item.done .remove { display: block; }
     .photo-item .retry {
-        border: none;
-        background: #ffc107;
-        color: #212529;
-        border-radius: 6px;
-        font-size: 0.65rem;
-        font-weight: 700;
+        border: none; background: #ffc107; color: #212529;
+        border-radius: 6px; font-size: 0.65rem; font-weight: 700;
         padding: 3px 8px;
     }
 
-    .upload-pill {
-        position: fixed;
-        left: 50%;
-        transform: translateX(-50%);
-        bottom: 140px;
-        background: #212529;
-        color: #fff;
-        border-radius: 20px;
-        padding: 0.35rem 0.9rem;
-        font-size: 0.78rem;
-        font-weight: 600;
-        z-index: 1050;
-        display: none;
+    .commit-bar {
+        position: sticky;
+        bottom: 70px;
+        background: #f7f7f9;
+        padding: 0.75rem 0 0.5rem;
+        z-index: 800;
     }
 
-    .uncommitted-banner {
-        background: #fff3cd;
-        border: 1px solid #ffe69c;
-        border-radius: 10px;
-        padding: 0.6rem 0.9rem;
-        margin-bottom: 0.75rem;
-        font-size: 0.85rem;
-        color: #664d03;
+    .toast-saved {
+        position: fixed;
+        left: 50%; transform: translateX(-50%);
+        bottom: 90px;
+        background: #198754; color: #fff;
+        padding: 0.6rem 1.1rem;
+        border-radius: 24px;
+        font-weight: 600; font-size: 0.9rem;
+        z-index: 1100;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.2);
         display: none;
+    }
+    .toast-saved.error { background: #dc3545; }
+    .toast-saved.warn  { background: #ffc107; color: #212529; }
+
+    .upload-pill {
+        position: fixed;
+        left: 50%; transform: translateX(-50%);
+        bottom: 140px;
+        background: #212529; color: #fff;
+        border-radius: 20px;
+        padding: 0.35rem 0.9rem;
+        font-size: 0.78rem; font-weight: 600;
+        z-index: 1050; display: none;
     }
 </style>
 {% endblock %}
@@ -196,7 +158,7 @@
     <div class="d-flex justify-content-between align-items-center mb-2">
         <div class="fw-semibold">Inspection sections</div>
         <span class="badge text-bg-light text-muted">
-            <span id="doneCount">{{ done }}</span>/{{ total }} complete
+            <span id="filledCount">{{ filled }}</span>/{{ total_fields }} fields
         </span>
     </div>
 
@@ -205,37 +167,51 @@
              style="width: {{ percent }}%; background: var(--accent)"></div>
     </div>
 
-    <div class="uncommitted-banner" id="uncommittedBanner">
-        <i class="bi bi-exclamation-triangle-fill me-1"></i>
-        <span id="uncommittedText"></span>
-    </div>
-
     {% for section in sections %}
     <div class="section-row" data-open="{{ section.key }}">
         <i class="bi {{ section.icon }} section-icon"></i>
         <div class="flex-grow-1">
             <div class="section-label">{{ section.label }}</div>
-            <div class="section-meta" id="meta-{{ section.key }}">
-                {% if section.is_complete %}
-                    Saved {{ section.saved_at|date:"j M, H:i" }}
-                {% else %}
-                    {{ section.field_count }} field{{ section.field_count|pluralize }}
-                {% endif %}
+            <div class="section-meta">
+                <span id="cover-{{ section.key }}">
+                    {% if section.countable %}
+                        {{ section.filled }}/{{ section.countable }} recorded
+                    {% else %}
+                        Notes only
+                    {% endif %}
+                </span>
                 <span id="hubphoto-{{ section.key }}">
                     {% if section.photo_count %}
                         · <i class="bi bi-camera"></i> {{ section.photo_count }}
                     {% endif %}
                 </span>
+                {% if section.countable %}
+                <div class="cover-bar">
+                    <span id="coverbar-{{ section.key }}"
+                          class="{% if section.percent == 100 %}full{% elif not section.filled %}none{% endif %}"
+                          style="width: {{ section.percent }}%"></span>
+                </div>
+                {% endif %}
             </div>
         </div>
-        <div class="state-dot {% if section.is_complete %}done{% endif %}"
-             id="dot-{{ section.key }}"></div>
         <i class="bi bi-chevron-right text-muted"></i>
     </div>
     {% endfor %}
 
+    <button type="button" id="completeBtn"
+            class="btn w-100 mt-3 {% if inspection.is_complete %}btn-success{% else %}btn-outline-success{% endif %}">
+        <i class="bi {% if inspection.is_complete %}bi-check-circle-fill{% else %}bi-check-circle{% endif %} me-2"
+           id="completeIcon"></i>
+        <span id="completeLabel">
+            {% if inspection.is_complete %}Inspection complete{% else %}Mark inspection complete{% endif %}
+        </span>
+    </button>
+    <div class="text-muted small text-center mt-1 mb-2">
+        Coverage will rarely reach 100% — sections that do not apply stay empty.
+    </div>
+
     <a href="{% url 'asset_report' asset.structure_code %}"
-       class="btn btn-outline-dark w-100 mt-3">
+       class="btn btn-outline-dark w-100 mt-2">
         <i class="bi bi-file-text me-1"></i>View report
     </a>
 
@@ -249,18 +225,13 @@
 {% for section in sections %}
 <div class="section-panel" id="panel-{{ section.key }}" style="display:none">
 
-    <div class="d-flex align-items-center gap-2 mb-3">
-        <button type="button" class="btn btn-outline-secondary btn-sm" data-back>
-            <i class="bi bi-arrow-left"></i>
-        </button>
-        <div>
-            <div class="fw-bold">
-                <i class="bi {{ section.icon }} me-1" style="color:var(--accent)"></i>
-                {{ section.label }}
-            </div>
-            <div class="text-muted" style="font-size:0.75rem">
-                {{ asset.structure_code }}
-            </div>
+    <div class="mb-3">
+        <div class="fw-bold">
+            <i class="bi {{ section.icon }} me-1" style="color:var(--accent)"></i>
+            {{ section.label }}
+        </div>
+        <div class="text-muted" style="font-size:0.75rem">
+            {{ asset.structure_code }}
         </div>
     </div>
 
@@ -272,10 +243,7 @@
             {% if field.field.widget.input_type == "radio" %}
                 <div class="radio-group">
                     {% for radio in field %}
-                    <label>
-                        {{ radio.tag }}
-                        <span>{{ radio.choice_label }}</span>
-                    </label>
+                    <label>{{ radio.tag }}<span>{{ radio.choice_label }}</span></label>
                     {% endfor %}
                 </div>
             {% else %}
@@ -291,7 +259,7 @@
                 <i class="bi bi-camera me-1" style="color:var(--accent)"></i>Photos
             </div>
             <span class="small text-muted" id="pcount-{{ section.key }}">
-                {{ section.photo_count }} / {{ section.photos }}
+                {{ section.photo_count }} total
             </span>
         </div>
 
@@ -308,13 +276,13 @@
         </div>
 
         <input type="file" accept="image/*" multiple hidden
-               id="pinput-{{ section.key }}" data-input="{{ section.key }}">
+               id="pinput-{{ section.key }}">
         <button type="button" class="btn btn-outline-secondary w-100"
-                data-add-photo="{{ section.key }}">
+                data-add-photo="{{ section.key }}" id="addbtn-{{ section.key }}">
             <i class="bi bi-images me-2"></i>Add photos
         </button>
-        <div class="small text-muted mt-2">
-            Photos upload as soon as you pick them. Your originals stay on the phone.
+        <div class="small text-muted mt-2" id="phint-{{ section.key }}">
+            Up to {{ section.photos }} photos per commit. Commit to add more.
         </div>
     </div>
 
@@ -323,9 +291,6 @@
                 style="background:var(--accent);border-color:var(--accent)"
                 data-commit="{{ section.key }}">
             <i class="bi bi-cloud-upload me-2"></i>Commit section
-        </button>
-        <button type="button" class="btn btn-link w-100 text-muted" data-back>
-            Back to sections
         </button>
     </div>
 </div>
@@ -343,107 +308,212 @@
     const hub = document.getElementById('hub');
     const panels = document.querySelectorAll('.section-panel');
     const toast = document.getElementById('toast');
-    const dirty = new Set();
 
-    let openKey = null;
+    // Photos allowed per commit cycle, refilled each time the section
+    // is committed. There is no cap on the total — the limit exists to
+    // keep any single wait short on a weak connection.
+    const PHOTO_BATCH = {
+        {% for section in sections %}"{{ section.key }}": {{ section.photos }}{% if not forloop.last %},{% endif %}
+        {% endfor %}
+    };
 
-    // variant: 'success' (default), 'error', or 'warn'
+    const usedThisCycle = {};
+    let uploading = 0;
+    let touched = false;
+
     function showToast(message, variant) {
         toast.textContent = message;
         toast.classList.toggle('error', variant === 'error');
         toast.classList.toggle('warn', variant === 'warn');
         toast.style.display = 'block';
         clearTimeout(toast._timer);
-        const linger = variant === 'success' || !variant ? 2600 : 4200;
-        toast._timer = setTimeout(() => { toast.style.display = 'none'; }, linger);
-    }
-
-    // Standing reminder on the hub of anything still to push.
-    function refreshBanner() {
-        const banner = document.getElementById('uncommittedBanner');
-        const text = document.getElementById('uncommittedText');
-        if (dirty.size === 0) {
-            banner.style.display = 'none';
-            return;
-        }
-        const labels = Array.from(dirty).map(
-            key => document.querySelector('[data-open="' + key + '"] .section-label').textContent.trim()
-        );
-        text.textContent =
-            dirty.size + ' section' + (dirty.size > 1 ? 's have' : ' has') +
-            ' data that has not been committed: ' + labels.join(', ') + '.';
-        banner.style.display = 'block';
+        toast._timer = setTimeout(() => { toast.style.display = 'none'; },
+                                  variant && variant !== 'success' ? 4200 : 2600);
     }
 
     function showHub() {
         panels.forEach(p => p.style.display = 'none');
         hub.style.display = '';
-        openKey = null;
-        refreshBanner();
         window.scrollTo(0, 0);
-    }
-
-    // Leaving a section keeps everything in the DOM, so nothing is lost
-    // yet - but the inspector should know it has not reached the server.
-    function backFromSection() {
-        const leaving = openKey;
-        showHub();
-        if (leaving && dirty.has(leaving)) {
-            showToast(
-                'Not committed yet — this section will be lost if you close the app.',
-                'warn'
-            );
-        }
     }
 
     function showSection(key) {
         hub.style.display = 'none';
         panels.forEach(p => p.style.display = 'none');
         document.getElementById('panel-' + key).style.display = '';
-        openKey = key;
         window.scrollTo(0, 0);
     }
 
-    // Hub navigation — no network, no page load.
     document.querySelectorAll('[data-open]').forEach(row => {
         row.addEventListener('click', () => showSection(row.dataset.open));
     });
-    document.querySelectorAll('[data-back]').forEach(btn => {
-        btn.addEventListener('click', backFromSection);
+
+    document.querySelectorAll('.section-panel form').forEach(form => {
+        form.addEventListener('input', () => { touched = true; });
     });
 
-    // Any edit marks the section amber until it is committed.
-    document.querySelectorAll('.section-panel form').forEach(form => {
-        const key = form.dataset.section;
-        form.addEventListener('input', () => {
-            dirty.add(key);
-            const dot = document.getElementById('dot-' + key);
-            dot.classList.add('dirty');
-            dot.classList.remove('done');
-            refreshBanner();
+    // ------------------------------------------------------------------
+    // Photo batches
+    // ------------------------------------------------------------------
+    function csrf() {
+        return document.querySelector('[name=csrfmiddlewaretoken]').value;
+    }
+
+    function batchLeft(key) {
+        return PHOTO_BATCH[key] - (usedThisCycle[key] || 0);
+    }
+
+    function refreshAddButton(key) {
+        const button = document.getElementById('addbtn-' + key);
+        const hint = document.getElementById('phint-' + key);
+        const left = batchLeft(key);
+        if (left <= 0) {
+            button.disabled = true;
+            hint.textContent = 'Photo limit reached — commit this section to add more.';
+        } else {
+            button.disabled = uploading > 0;
+            hint.textContent = left + ' photo' + (left > 1 ? 's' : '') +
+                               ' can be added before committing.';
+        }
+    }
+
+    function refreshPill() {
+        const pill = document.getElementById('uploadPill');
+        pill.style.display = uploading ? 'block' : 'none';
+        if (uploading) {
+            pill.textContent = uploading + ' photo' + (uploading > 1 ? 's' : '') + ' uploading…';
+        }
+        Object.keys(PHOTO_BATCH).forEach(refreshAddButton);
+    }
+
+    function updatePhotoCount(key) {
+        const grid = document.getElementById('pgrid-' + key);
+        const done = grid.querySelectorAll('.photo-item.done').length;
+        document.getElementById('pcount-' + key).textContent = done + ' total';
+        document.getElementById('hubphoto-' + key).innerHTML =
+            done ? ' · <i class="bi bi-camera"></i> ' + done : '';
+    }
+
+    function makeTile(grid, file) {
+        const tile = document.createElement('div');
+        tile.className = 'photo-item';
+        tile.innerHTML =
+            '<img src="' + URL.createObjectURL(file) + '" alt="">' +
+            '<div class="overlay"><span class="spinner-border spinner-border-sm"></span></div>' +
+            '<button type="button" class="remove"><i class="bi bi-x-lg"></i></button>';
+        grid.appendChild(tile);
+        return tile;
+    }
+
+    function failTile(tile, onRetry) {
+        const overlay = tile.querySelector('.overlay');
+        overlay.innerHTML = '<div>Failed</div>';
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'retry';
+        button.textContent = 'Retry';
+        button.addEventListener('click', event => {
+            event.stopPropagation();
+            onRetry();
+        });
+        overlay.appendChild(button);
+    }
+
+    async function uploadOne(key, file, tile) {
+        tile.classList.remove('done');
+        tile.querySelector('.overlay').innerHTML =
+            '<span class="spinner-border spinner-border-sm"></span>';
+        uploading += 1;
+        refreshPill();
+
+        try {
+            const resized = await resizeImage(file);
+            const payload = new FormData();
+            payload.append('photo', resized);
+
+            const response = await fetch(
+                '/asset/' + encodeURIComponent(CODE) + '/section/' + key + '/photo/',
+                { method: 'POST', headers: { 'X-CSRFToken': csrf() }, body: payload }
+            );
+            const result = await response.json();
+            if (!response.ok || !result.ok) throw new Error(result.error || 'Upload failed');
+
+            tile.dataset.photoId = result.id;
+            tile.querySelector('.remove').dataset.remove = result.id;
+            tile.classList.add('done');
+            updatePhotoCount(key);
+        } catch (error) {
+            failTile(tile, () => uploadOne(key, file, tile));
+            showToast('Photo not uploaded — ' + error.message, 'error');
+        } finally {
+            uploading -= 1;
+            refreshPill();
+        }
+    }
+
+    async function addPhotos(key, files) {
+        const left = batchLeft(key);
+        if (left <= 0) {
+            showToast('Commit this section to add more photos.', 'warn');
+            return;
+        }
+        const chosen = Array.from(files).slice(0, left);
+        if (files.length > left) {
+            showToast('Only ' + left + ' more allowed before committing — added the first '
+                      + left + '.', 'warn');
+        }
+
+        usedThisCycle[key] = (usedThisCycle[key] || 0) + chosen.length;
+        refreshAddButton(key);
+
+        const grid = document.getElementById('pgrid-' + key);
+        // Sequential: on a weak uplink, several at once is slower
+        // overall and much harder to report progress on.
+        for (const file of chosen) {
+            await uploadOne(key, file, makeTile(grid, file));
+        }
+    }
+
+    document.querySelectorAll('[data-add-photo]').forEach(button => {
+        const key = button.dataset.addPhoto;
+        const input = document.getElementById('pinput-' + key);
+        button.addEventListener('click', () => input.click());
+        input.addEventListener('change', () => {
+            if (input.files.length) addPhotos(key, input.files);
+            input.value = '';
+        });
+        refreshAddButton(key);
+    });
+
+    document.querySelectorAll('.photo-grid').forEach(grid => {
+        const key = grid.id.replace('pgrid-', '');
+        grid.addEventListener('click', async event => {
+            const button = event.target.closest('[data-remove]');
+            if (!button) return;
+            if (!confirm('Delete this photo?')) return;
+            const tile = button.closest('.photo-item');
+            try {
+                const response = await fetch(
+                    '/asset/' + encodeURIComponent(CODE) + '/photo/' +
+                    button.dataset.remove + '/delete/',
+                    { method: 'POST', headers: { 'X-CSRFToken': csrf() } }
+                );
+                const result = await response.json();
+                if (!response.ok || !result.ok) throw new Error(result.error || 'Delete failed');
+                tile.remove();
+                updatePhotoCount(key);
+                showToast('Photo deleted', 'success');
+            } catch (error) {
+                showToast('Not deleted — ' + error.message, 'error');
+            }
         });
     });
 
-    function isFormEmpty(form) {
-        const data = new FormData(form);
-        for (const [name, value] of data.entries()) {
-            if (name === 'csrfmiddlewaretoken') continue;
-            if (String(value).trim() !== '') return false;
-        }
-        return true;
-    }
-
+    // ------------------------------------------------------------------
+    // Commit — the only way out of a section
+    // ------------------------------------------------------------------
     async function commit(key, button) {
         const form = document.querySelector('#panel-' + key + ' form');
-
-        if (isFormEmpty(form)) {
-            const proceed = confirm(
-                "This section is empty — no data has been entered.\n\n" +
-                "Commit it anyway and mark it complete?"
-            );
-            if (!proceed) return;
-        }
-
         const original = button.innerHTML;
         button.disabled = true;
         button.innerHTML =
@@ -455,18 +525,25 @@
                 { method: 'POST', body: new FormData(form) }
             );
             const result = await response.json();
+            if (!response.ok || !result.ok) throw new Error(result.error || 'Save failed');
 
-            if (!response.ok || !result.ok) {
-                throw new Error(result.error || 'Save failed');
+            touched = false;
+
+            // A successful commit refills the photo batch.
+            usedThisCycle[key] = 0;
+            refreshAddButton(key);
+
+            if (result.section_total) {
+                document.getElementById('cover-' + key).textContent =
+                    result.section_filled + '/' + result.section_total + ' recorded';
+                const bar = document.getElementById('coverbar-' + key);
+                if (bar) {
+                    bar.style.width = result.section_percent + '%';
+                    bar.classList.toggle('full', result.section_percent === 100);
+                    bar.classList.toggle('none', result.section_filled === 0);
+                }
             }
-
-            dirty.delete(key);
-            const dot = document.getElementById('dot-' + key);
-            dot.classList.remove('dirty');
-            dot.classList.add('done');
-            document.getElementById('meta-' + key).textContent =
-                'Saved ' + result.saved_at;
-            document.getElementById('doneCount').textContent = result.done;
+            document.getElementById('filledCount').textContent = result.filled;
             document.getElementById('progressBar').style.width = result.percent + '%';
 
             showToast('Saved to server', 'success');
@@ -483,175 +560,36 @@
         button.addEventListener('click', () => commit(button.dataset.commit, button));
     });
 
-    // -----------------------------------------------------------------
-    // Photos
-    // -----------------------------------------------------------------
-    const PHOTO_LIMITS = {
-        {% for section in sections %}"{{ section.key }}": {{ section.photos }}{% if not forloop.last %},{% endif %}
-        {% endfor %}
-    };
-
-    let uploading = 0;
-
-    function csrf() {
-        return document.querySelector('[name=csrfmiddlewaretoken]').value;
-    }
-
-    function refreshPill() {
-        const pill = document.getElementById('uploadPill');
-        if (uploading === 0) {
-            pill.style.display = 'none';
-            return;
-        }
-        pill.textContent = uploading + ' photo' + (uploading > 1 ? 's' : '') + ' uploading…';
-        pill.style.display = 'block';
-    }
-
-    function updatePhotoCount(key) {
-        const grid = document.getElementById('pgrid-' + key);
-        const done = grid.querySelectorAll('.photo-item.done').length;
-        document.getElementById('pcount-' + key).textContent =
-            done + ' / ' + PHOTO_LIMITS[key];
-        document.getElementById('hubphoto-' + key).innerHTML =
-            done ? ' · <i class="bi bi-camera"></i> ' + done : '';
-    }
-
-    function slotsLeft(key) {
-        const grid = document.getElementById('pgrid-' + key);
-        return PHOTO_LIMITS[key] - grid.querySelectorAll('.photo-item').length;
-    }
-
-    function makeTile(grid, file) {
-        const tile = document.createElement('div');
-        tile.className = 'photo-item';
-        tile.innerHTML =
-            '<img src="' + URL.createObjectURL(file) + '" alt="">' +
-            '<div class="overlay"><span class="spinner-border spinner-border-sm"></span></div>' +
-            '<button type="button" class="remove"><i class="bi bi-x-lg"></i></button>';
-        grid.appendChild(tile);
-        return tile;
-    }
-
-    function setTileState(tile, state, message, onRetry) {
-        const overlay = tile.querySelector('.overlay');
-        if (state === 'done') {
-            tile.classList.add('done');
-            return;
-        }
-        tile.classList.remove('done');
-        overlay.innerHTML = '';
-        const label = document.createElement('div');
-        label.textContent = message;
-        overlay.appendChild(label);
-        if (onRetry) {
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.className = 'retry';
-            button.textContent = 'Retry';
-            button.addEventListener('click', event => {
-                event.stopPropagation();
-                onRetry();
-            });
-            overlay.appendChild(button);
-        }
-    }
-
-    async function uploadOne(key, file, tile) {
-        setTileState(tile, 'busy', '');
-        tile.querySelector('.overlay').innerHTML =
-            '<span class="spinner-border spinner-border-sm"></span>';
-        uploading += 1;
-        refreshPill();
-
+    // ------------------------------------------------------------------
+    // Inspection complete toggle
+    // ------------------------------------------------------------------
+    document.getElementById('completeBtn').addEventListener('click', async function () {
+        const button = this;
+        button.disabled = true;
         try {
-            const resized = await resizeImage(file);
-            const payload = new FormData();
-            payload.append('photo', resized);
-
             const response = await fetch(
-                '/asset/' + encodeURIComponent(CODE) + '/section/' + key + '/photo/',
-                { method: 'POST', headers: { 'X-CSRFToken': csrf() }, body: payload }
+                '/asset/' + encodeURIComponent(CODE) + '/complete/',
+                { method: 'POST', headers: { 'X-CSRFToken': csrf() } }
             );
             const result = await response.json();
-            if (!response.ok || !result.ok) {
-                throw new Error(result.error || 'Upload failed');
-            }
+            if (!response.ok || !result.ok) throw new Error(result.error || 'Failed');
 
-            tile.dataset.photoId = result.id;
-            tile.querySelector('.remove').dataset.remove = result.id;
-            setTileState(tile, 'done');
-            updatePhotoCount(key);
+            button.classList.toggle('btn-success', result.is_complete);
+            button.classList.toggle('btn-outline-success', !result.is_complete);
+            document.getElementById('completeIcon').className =
+                'bi me-2 ' + (result.is_complete ? 'bi-check-circle-fill' : 'bi-check-circle');
+            document.getElementById('completeLabel').textContent =
+                result.is_complete ? 'Inspection complete' : 'Mark inspection complete';
+            showToast(result.is_complete ? 'Marked complete' : 'Reopened', 'success');
         } catch (error) {
-            setTileState(tile, 'failed', 'Failed', () => uploadOne(key, file, tile));
-            showToast('Photo not uploaded — ' + error.message, 'error');
+            showToast('Could not update — ' + error.message, 'error');
         } finally {
-            uploading -= 1;
-            refreshPill();
+            button.disabled = false;
         }
-    }
-
-    async function addPhotos(key, files) {
-        const remaining = slotsLeft(key);
-        if (remaining <= 0) {
-            showToast('This section already holds ' + PHOTO_LIMITS[key] + ' photos.', 'warn');
-            return;
-        }
-        const chosen = Array.from(files).slice(0, remaining);
-        if (files.length > remaining) {
-            showToast('Only ' + remaining + ' slot' + (remaining > 1 ? 's' : '') +
-                      ' left — the first ' + remaining + ' were added.', 'warn');
-        }
-
-        const grid = document.getElementById('pgrid-' + key);
-        // Sequential rather than parallel: on a weak uplink, four at
-        // once is slower overall and harder to report on.
-        for (const file of chosen) {
-            const tile = makeTile(grid, file);
-            await uploadOne(key, file, tile);
-        }
-    }
-
-    document.querySelectorAll('[data-add-photo]').forEach(button => {
-        const key = button.dataset.addPhoto;
-        const input = document.getElementById('pinput-' + key);
-        button.addEventListener('click', () => input.click());
-        input.addEventListener('change', () => {
-            if (input.files.length) addPhotos(key, input.files);
-            input.value = '';
-        });
     });
 
-    document.querySelectorAll('.photo-grid').forEach(grid => {
-        const key = grid.id.replace('pgrid-', '');
-        grid.addEventListener('click', async event => {
-            const button = event.target.closest('[data-remove]');
-            if (!button) return;
-            const tile = button.closest('.photo-item');
-            if (!confirm('Delete this photo?')) return;
-
-            try {
-                const response = await fetch(
-                    '/asset/' + encodeURIComponent(CODE) + '/photo/' +
-                    button.dataset.remove + '/delete/',
-                    { method: 'POST', headers: { 'X-CSRFToken': csrf() } }
-                );
-                const result = await response.json();
-                if (!response.ok || !result.ok) {
-                    throw new Error(result.error || 'Delete failed');
-                }
-                tile.remove();
-                updatePhotoCount(key);
-                showToast('Photo deleted', 'success');
-            } catch (error) {
-                showToast('Not deleted — ' + error.message, 'error');
-            }
-        });
-    });
-
-    // Only warn when leaving the app would actually lose something.
-    // Moving between hub and sections keeps everything in the DOM.
     window.addEventListener('beforeunload', event => {
-        if (dirty.size > 0 || uploading > 0) {
+        if (touched || uploading > 0) {
             event.preventDefault();
             event.returnValue = '';
         }

@@ -68,7 +68,7 @@
                 <div class="details">{{ row.asset.type_details|default:"—" }}</div>
                 <div class="route">
                     {% if row.has_data %}
-                        {{ row.done }}/{{ row.total }} sections ·
+                        {{ row.percent }}% recorded ·
                         {{ row.photo_count }} photo{{ row.photo_count|pluralize }} ·
                         {{ row.size_display }}
                     {% else %}

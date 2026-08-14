@@ -54,10 +54,10 @@
                 </div>
             </div>
             <div class="text-end flex-shrink-0">
-                {% if row.status == "complete" %}
+                {% if row.is_complete %}
                     <span class="badge text-bg-success badge-status">Complete</span>
                 {% elif row.status == "in_progress" %}
-                    <span class="badge text-bg-warning badge-status">{{ row.done }}/{{ row.total }}</span>
+                    <span class="badge text-bg-warning badge-status">{{ row.percent }}%</span>
                 {% else %}
                     <span class="badge text-bg-light text-muted badge-status">Not started</span>
                 {% endif %}

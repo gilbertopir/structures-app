@@ -19,10 +19,14 @@ Each section is a dict:
     label    heading shown to the user
     icon     Bootstrap Icons class (matches the PRI app's icon set)
     fields   model field names, in display order
-    photos   max photos allowed for this section (0 = no photo control)
+    photos   how many photos may be added per commit cycle (0 = no
+             photo control). This is not a cap on the total: the
+             allowance refills each time the section is committed, so
+             the only thing it limits is how long a single upload wait
+             can be on a weak connection.
 """
 
-# Max photos allowed on any one section unless overridden below.
+# Photos per commit cycle, unless a section overrides it below.
 DEFAULT_SECTION_PHOTO_LIMIT = 3
 
 
@@ -40,7 +44,7 @@ STR_SECTIONS = [
             "carriageway_lhs_verge_width_mm",
             "carriageway_notes",
         ],
-        "photos": 4,
+        "photos": 3,
     },
     {
         "key": "parapet",
@@ -55,7 +59,7 @@ STR_SECTIONS = [
             "parapet_lhs_height_mm",
             "parapet_notes",
         ],
-        "photos": 4,
+        "photos": 3,
     },
     {
         "key": "soffit_arch",
@@ -66,7 +70,7 @@ STR_SECTIONS = [
             "soffit_thickness_mm",
             "soffit_notes",
         ],
-        "photos": 4,
+        "photos": 3,
     },
     {
         "key": "abutments_pier",
@@ -77,7 +81,7 @@ STR_SECTIONS = [
             "abutment_thickness_mm",
             "abutment_notes",
         ],
-        "photos": 4,
+        "photos": 3,
     },
     {
         "key": "headwall",
@@ -87,7 +91,7 @@ STR_SECTIONS = [
             "headwall_height_mm",
             "headwall_notes",
         ],
-        "photos": 4,
+        "photos": 3,
     },
     {
         "key": "wingwalls",
@@ -96,7 +100,7 @@ STR_SECTIONS = [
         "fields": [
             "wingwall_notes",
         ],
-        "photos": 4,
+        "photos": 3,
     },
     {
         "key": "concrete",
@@ -106,7 +110,7 @@ STR_SECTIONS = [
             "concrete_reinforced",
             "concrete_notes",
         ],
-        "photos": 4,
+        "photos": 3,
     },
     {
         "key": "masonry",
@@ -119,7 +123,7 @@ STR_SECTIONS = [
             "masonry_arch_barrel_joint_thickness_mm",
             "masonry_notes",
         ],
-        "photos": 4,
+        "photos": 3,
     },
     {
         "key": "overall_condition",
@@ -129,7 +133,7 @@ STR_SECTIONS = [
             "overall_condition",
             "overall_condition_notes",
         ],
-        "photos": 4,
+        "photos": 3,
     },
     {
         "key": "general_notes",
@@ -138,7 +142,7 @@ STR_SECTIONS = [
         "fields": [
             "general_notes",
         ],
-        "photos": 4,
+        "photos": 3,
     },
 ]
 
@@ -160,7 +164,7 @@ CUL_SECTIONS = [
             "carriageway_lhs_verge_width_mm",
             "carriageway_notes",
         ],
-        "photos": 4,
+        "photos": 3,
     },
     {
         "key": "headwall",
@@ -175,7 +179,7 @@ CUL_SECTIONS = [
             "headwall_lhs_height_mm",
             "headwall_notes",
         ],
-        "photos": 4,
+        "photos": 3,
     },
     {
         "key": "box",
@@ -189,7 +193,7 @@ CUL_SECTIONS = [
             "box_cover_depth_mm",
             "box_notes",
         ],
-        "photos": 4,
+        "photos": 3,
     },
     {
         "key": "pipe",
@@ -201,7 +205,7 @@ CUL_SECTIONS = [
             "pipe_cover_depth_mm",
             "pipe_notes",
         ],
-        "photos": 4,
+        "photos": 3,
     },
     {
         "key": "overall_condition",
@@ -211,7 +215,7 @@ CUL_SECTIONS = [
             "overall_condition",
             "overall_condition_notes",
         ],
-        "photos": 4,
+        "photos": 3,
     },
     {
         "key": "general_notes",
@@ -220,7 +224,7 @@ CUL_SECTIONS = [
         "fields": [
             "general_notes",
         ],
-        "photos": 4,
+        "photos": 3,
     },
 ]
 
@@ -272,6 +276,19 @@ def all_fields(asset_type):
     for section in get_sections(asset_type):
         fields.extend(section["fields"])
     return fields
+
+
+def countable_fields(asset_type, key):
+    """Fields that count toward coverage.
+
+    Notes are excluded: they are optional commentary, and including
+    them would mean almost no section could ever reach 100%.
+    """
+    return [f for f in section_fields(asset_type, key) if not f.endswith("notes")]
+
+
+def countable_field_count(asset_type, key):
+    return len(countable_fields(asset_type, key))
 
 
 def photo_limit(asset_type, key):

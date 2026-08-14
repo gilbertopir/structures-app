@@ -109,7 +109,7 @@ class CulvertDataInline(admin.StackedInline):
 class SectionProgressInline(admin.TabularInline):
     model = SectionProgress
     extra = 0
-    fields = ("section_key", "is_complete", "saved_by", "saved_at")
+    fields = ("section_key", "saved_by", "saved_at")
     readonly_fields = ("saved_at",)
 
 
@@ -138,14 +138,15 @@ class InspectionAdmin(admin.ModelAdmin):
         "asset_type_display",
         "visit",
         "status",
-        "progress",
+        "is_complete",
+        "coverage_display",
         "updated_by",
         "updated_at",
     )
-    list_filter = ("status", "visit", "asset__asset_type", "asset__batch")
+    list_filter = ("status", "is_complete", "visit", "asset__asset_type", "asset__batch")
     search_fields = ("asset__structure_code", "asset__type_details")
     autocomplete_fields = ("asset",)
-    readonly_fields = ("created_at", "updated_at", "progress")
+    readonly_fields = ("created_at", "updated_at", "coverage_display")
     date_hierarchy = "updated_at"
 
     @admin.display(description="Asset", ordering="asset__structure_code")
@@ -156,11 +157,12 @@ class InspectionAdmin(admin.ModelAdmin):
     def asset_type_display(self, obj):
         return obj.asset.asset_type
 
-    @admin.display(description="Sections")
-    def progress(self, obj):
+    @admin.display(description="Fields recorded")
+    def coverage_display(self, obj):
         if not obj.pk:
             return "-"
-        return f"{obj.completed_section_count} / {obj.total_section_count}"
+        filled, total = obj.coverage
+        return f"{filled} / {total}  ({obj.coverage_percent}%)"
 
     def get_inline_instances(self, request, obj=None):
         """Show only the detail inline matching the asset type.

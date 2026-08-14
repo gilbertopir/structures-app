@@ -46,10 +46,10 @@
             </div>
         </div>
         <div class="text-end flex-shrink-0">
-            {% if row.inspection.status == "complete" %}
+            {% if row.inspection.is_complete %}
                 <span class="badge text-bg-success badge-status">Complete</span>
             {% else %}
-                <span class="badge text-bg-warning badge-status">{{ row.done }}/{{ row.total }}</span>
+                <span class="badge text-bg-warning badge-status">{{ row.percent }}%</span>
             {% endif %}
             <div class="route mt-1">
                 <i class="bi bi-camera"></i> {{ row.photos }}

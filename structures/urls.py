@@ -27,6 +27,11 @@ urlpatterns = [
         name="delete_photo",
     ),
     path(
+        "asset/<str:structure_code>/complete/",
+        views.toggle_complete,
+        name="toggle_complete",
+    ),
+    path(
         "asset/<str:structure_code>/report/",
         views.asset_report,
         name="asset_report",

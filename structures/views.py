@@ -24,7 +24,6 @@ from .sections import (
     get_sections,
     is_valid_section,
     photo_limit,
-    section_count,
 )
 
 # The visit this survey round belongs to. Lives here for now; move to
@@ -41,6 +40,10 @@ PAGE_META = {
     "STR": {"title": "Structures", "icon": "bi-bank"},
     "CUL": {"title": "Culverts", "icon": "bi-water"},
 }
+
+# Runaway guard only — the real constraint is the per-commit-cycle
+# allowance in sections.py, applied in the browser.
+MAX_PHOTOS_PER_SECTION = 100
 
 
 # ---------------------------------------------------------------------
@@ -73,24 +76,40 @@ def logout_view(request):
 # ---------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------
-def _inspection_status_map(asset_type):
-    """{asset_id: (status, completed_section_count)} for the current visit."""
-    inspections = Inspection.objects.filter(
-        visit=CURRENT_VISIT, asset__asset_type=asset_type
-    )
-    return {
-        inspection.asset_id: (inspection.status, inspection.completed_section_count)
-        for inspection in inspections
-    }
-
-
 def _asset_rows(asset_type):
-    total = section_count(asset_type)
-    statuses = _inspection_status_map(asset_type)
+    """Assets with their recorded-field coverage for the current visit."""
+    inspections = {
+        inspection.asset_id: inspection
+        for inspection in Inspection.objects.filter(
+            visit=CURRENT_VISIT, asset__asset_type=asset_type
+        )
+    }
     rows = []
     for asset in Asset.objects.filter(asset_type=asset_type, is_active=True):
-        status, done = statuses.get(asset.id, ("not_started", 0))
-        rows.append({"asset": asset, "status": status, "done": done, "total": total})
+        inspection = inspections.get(asset.id)
+        if inspection is None:
+            rows.append(
+                {
+                    "asset": asset,
+                    "status": "not_started",
+                    "filled": 0,
+                    "total": 0,
+                    "percent": 0,
+                    "is_complete": False,
+                }
+            )
+            continue
+        filled, total = inspection.coverage
+        rows.append(
+            {
+                "asset": asset,
+                "status": inspection.status,
+                "filled": filled,
+                "total": total,
+                "percent": inspection.coverage_percent,
+                "is_complete": inspection.is_complete,
+            }
+        )
     return rows
 
 
@@ -121,7 +140,7 @@ def asset_list(request, asset_type):
         "page_title": PAGE_META[asset_type]["title"],
         "page_icon": PAGE_META[asset_type]["icon"],
         "started_count": sum(1 for r in rows if r["status"] != "not_started"),
-        "complete_count": sum(1 for r in rows if r["status"] == "complete"),
+        "complete_count": sum(1 for r in rows if r["is_complete"]),
         **ACCENTS[asset_type],
     }
     return render(request, "asset_list.html", context)
@@ -152,7 +171,7 @@ def asset_detail(request, structure_code):
     asset = get_object_or_404(Asset, structure_code=structure_code.upper())
     inspection = _get_or_create_inspection(asset, request.user)
 
-    progress = {
+    saved = {
         record.section_key: record for record in inspection.section_progress.all()
     }
 
@@ -162,36 +181,40 @@ def asset_detail(request, structure_code):
 
     data_instance = inspection.data
 
+    coverage = inspection.section_coverage()
+
     sections = []
     for section in get_sections(asset.asset_type):
-        record = progress.get(section["key"])
+        key = section["key"]
+        record = saved.get(key)
+        filled, total_fields = coverage.get(key, (0, 0))
         sections.append(
             {
-                "key": section["key"],
+                "key": key,
                 "label": section["label"],
                 "icon": section["icon"],
                 "photos": section["photos"],
-                "field_count": len(section["fields"]),
-                "is_complete": bool(record and record.is_complete),
+                "filled": filled,
+                "countable": total_fields,
+                "percent": int(filled / total_fields * 100) if total_fields else None,
                 "saved_at": record.saved_at if record else None,
-                "existing_photos": photos_by_section.get(section["key"], []),
-                "photo_count": len(photos_by_section.get(section["key"], [])),
+                "existing_photos": photos_by_section.get(key, []),
+                "photo_count": len(photos_by_section.get(key, [])),
                 "form": build_section_form(
-                    asset.asset_type, section["key"], instance=data_instance
+                    asset.asset_type, key, instance=data_instance
                 ),
             }
         )
 
-    total = len(sections)
-    done = sum(1 for s in sections if s["is_complete"])
+    filled, total_fields = inspection.coverage
 
     context = {
         "asset": asset,
         "inspection": inspection,
         "sections": sections,
-        "done": done,
-        "total": total,
-        "percent": int(done / total * 100) if total else 0,
+        "filled": filled,
+        "total_fields": total_fields,
+        "percent": inspection.coverage_percent,
         **ACCENTS.get(asset.asset_type, ACCENTS["STR"]),
     }
     return render(request, "capture.html", context)
@@ -241,27 +264,58 @@ def commit_section(request, structure_code, section_key):
         SectionProgress.objects.update_or_create(
             inspection=inspection,
             section_key=section_key,
-            defaults={"is_complete": True, "saved_by": request.user},
+            defaults={"saved_by": request.user},
         )
 
         inspection.updated_by = request.user
         inspection.save(update_fields=["updated_by", "updated_at"])
         inspection.refresh_status()
 
-    done = inspection.completed_section_count
-    total = inspection.total_section_count
+    coverage = inspection.section_coverage()
+    section_filled, section_total = coverage.get(section_key, (0, 0))
+    filled, total = inspection.coverage
 
     return JsonResponse(
         {
             "ok": True,
             "section": section_key,
-            "done": done,
+            "section_filled": section_filled,
+            "section_total": section_total,
+            "section_percent": (
+                int(section_filled / section_total * 100) if section_total else None
+            ),
+            "filled": filled,
             "total": total,
-            "percent": int(done / total * 100) if total else 0,
+            "percent": int(filled / total * 100) if total else 0,
             "status": inspection.status,
             "saved_at": timezone.localtime().strftime("%H:%M"),
         }
     )
+
+
+@login_required
+@require_POST
+def toggle_complete(request, structure_code):
+    """Mark the whole inspection finished, or reopen it.
+
+    Deliberate and asset-level: coverage cannot tell 'no wingwalls on
+    this bridge' from 'nobody looked yet', so a person says when the
+    structure has been recorded as fully as it warrants.
+    """
+    asset = get_object_or_404(Asset, structure_code=structure_code.upper())
+
+    rejection = _reject_reviewer(request)
+    if rejection is not None:
+        return rejection
+
+    inspection = _get_or_create_inspection(asset, request.user)
+    inspection.is_complete = not inspection.is_complete
+    inspection.completed_at = timezone.now() if inspection.is_complete else None
+    inspection.completed_by = request.user if inspection.is_complete else None
+    inspection.save(update_fields=["is_complete", "completed_at", "completed_by"])
+    inspection.refresh_status()
+
+    return JsonResponse({"ok": True, "is_complete": inspection.is_complete})
 
 
 # ---------------------------------------------------------------------
@@ -280,7 +334,7 @@ def asset_report(request, structure_code):
 
     data = inspection.data if inspection else None
     model = type(data) if data is not None else None
-    complete_keys = inspection.completed_section_keys if inspection else set()
+    coverage = inspection.section_coverage() if inspection else {}
 
     photos_by_section = {}
     if inspection:
@@ -304,6 +358,7 @@ def asset_report(request, structure_code):
 
         photos = photos_by_section.get(section["key"], [])
         total_photos += len(photos)
+        filled, total_fields = coverage.get(section["key"], (0, 0))
 
         sections.append(
             {
@@ -312,17 +367,22 @@ def asset_report(request, structure_code):
                 "icon": section["icon"],
                 "rows": rows,
                 "photos": photos,
-                "is_complete": section["key"] in complete_keys,
+                "filled": filled,
+                "countable": total_fields,
+                "percent": int(filled / total_fields * 100) if total_fields else None,
                 "has_values": any(not r["is_blank"] for r in rows),
             }
         )
+
+    filled, total_fields = inspection.coverage if inspection else (0, 0)
 
     context = {
         "asset": asset,
         "inspection": inspection,
         "sections": sections,
-        "done": len(complete_keys),
-        "total": len(sections),
+        "filled": filled,
+        "total_fields": total_fields,
+        "percent": inspection.coverage_percent if inspection else 0,
         "total_photos": total_photos,
         "visit": CURRENT_VISIT,
         **ACCENTS.get(asset.asset_type, ACCENTS["STR"]),
@@ -369,13 +429,20 @@ def upload_photo(request, structure_code, section_key):
 
     inspection = _get_or_create_inspection(asset, request.user)
 
-    limit = photo_limit(asset.asset_type, section_key)
+    # There is no cap on the total number of photos in a section. The
+    # per-commit-cycle allowance is enforced in the browser, because it
+    # exists to keep any single upload wait short — not to limit how
+    # much evidence an inspector can record. The ceiling below is only
+    # a runaway guard and should never be reached in normal use.
     existing = inspection.photos.filter(section_key=section_key).count()
-    if existing >= limit:
+    if existing >= MAX_PHOTOS_PER_SECTION:
         return JsonResponse(
             {
                 "ok": False,
-                "error": f"This section already holds {limit} photos.",
+                "error": (
+                    f"This section has reached the safety limit of "
+                    f"{MAX_PHOTOS_PER_SECTION} photos."
+                ),
             },
             status=400,
         )
@@ -395,7 +462,7 @@ def upload_photo(request, structure_code, section_key):
             "url": photo.photo.url,
             "name": os.path.basename(photo.photo.name),
             "count": existing + 1,
-            "limit": limit,
+            "batch_limit": photo_limit(asset.asset_type, section_key),
         }
     )
 
@@ -450,8 +517,7 @@ def data_view(request):
             {
                 "asset": inspection.asset,
                 "inspection": inspection,
-                "done": inspection.completed_section_count,
-                "total": inspection.total_section_count,
+                "percent": inspection.coverage_percent,
                 "photos": inspection.photo_count,
             }
         )
@@ -509,8 +575,7 @@ def export_page(request):
             {
                 "asset": asset,
                 "has_data": has_data,
-                "done": inspection.completed_section_count if inspection else 0,
-                "total": section_count(asset.asset_type),
+                "percent": inspection.coverage_percent if inspection else 0,
                 "photo_count": count,
                 "size_display": _human_size(size),
             }

@@ -4,7 +4,7 @@ import re
 from django.contrib.auth.models import User
 from django.db import models
 
-from .sections import all_section_key_choices, section_count, section_keys
+from .sections import all_section_key_choices, countable_fields, get_sections
 
 
 # ---------------------------------------------------------------------
@@ -44,6 +44,11 @@ def mm(verbose_name):
 
 def notes(verbose_name="Notes"):
     return models.TextField(verbose_name=verbose_name, blank=True)
+
+
+def has_value(value):
+    """A field counts as recorded if it holds anything at all."""
+    return value not in (None, "", [])
 
 
 # ---------------------------------------------------------------------
@@ -88,8 +93,6 @@ class Asset(models.Model):
     route_new = models.CharField(max_length=50, blank=True, verbose_name="New route name")
     route_old = models.CharField(max_length=50, blank=True, verbose_name="Old route name")
     google_maps_url = models.URLField(max_length=500, blank=True)
-    latitude = models.FloatField(null=True, blank=True)
-    longitude = models.FloatField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
 
     @staticmethod
@@ -103,10 +106,6 @@ class Asset(models.Model):
         if not self.asset_type:
             self.asset_type = self.derive_asset_type(self.structure_code)
         super().save(*args, **kwargs)
-
-    @property
-    def section_count(self):
-        return section_count(self.asset_type)
 
     def __str__(self):
         return self.structure_code
@@ -130,6 +129,16 @@ class Inspection(models.Model):
     visit = models.CharField(max_length=30, default="Visit 2", db_index=True)
     status = models.CharField(
         max_length=20, choices=STATUS_CHOICES, default="not_started", db_index=True
+    )
+    # Set deliberately by the engineer when the structure has been
+    # recorded as fully as it warrants. Coverage cannot express this:
+    # a bridge with no wingwalls will never reach 100% of its fields,
+    # and that is a correct result rather than an unfinished one.
+    is_complete = models.BooleanField(default=False)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    completed_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="inspections_completed",
     )
     created_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True,
@@ -157,40 +166,54 @@ class Inspection(models.Model):
             return None
         return obj
 
-    @property
-    def completed_section_count(self):
-        return self.section_progress.filter(is_complete=True).count()
+    def section_coverage(self):
+        """{section_key: (filled, total)} across countable fields.
+
+        Measures what has actually been recorded rather than whether
+        someone pressed a button, so a section left blank because the
+        structure has no such element reads as 0 rather than as done.
+        """
+        data = self.data
+        result = {}
+        for section in get_sections(self.asset_type):
+            fields = countable_fields(self.asset_type, section["key"])
+            filled = sum(1 for name in fields if has_value(getattr(data, name, None)))
+            result[section["key"]] = (filled, len(fields))
+        return result
 
     @property
-    def total_section_count(self):
-        return section_count(self.asset_type)
+    def coverage(self):
+        """(filled, total) across every countable field on the asset."""
+        filled = total = 0
+        for section_filled, section_total in self.section_coverage().values():
+            filled += section_filled
+            total += section_total
+        return filled, total
 
     @property
-    def completed_section_keys(self):
-        return set(
-            self.section_progress.filter(is_complete=True).values_list(
-                "section_key", flat=True
-            )
-        )
+    def coverage_percent(self):
+        filled, total = self.coverage
+        return int(filled / total * 100) if total else 0
 
-    def next_incomplete_section(self):
-        """Section key to resume at, or None if everything is done."""
-        done = self.completed_section_keys
-        for key in section_keys(self.asset_type):
-            if key not in done:
-                return key
-        return None
+    @property
+    def has_data(self):
+        """True if anything at all has been recorded, notes and photos included."""
+        data = self.data
+        if data is not None:
+            for section in get_sections(self.asset_type):
+                for name in section["fields"]:
+                    if has_value(getattr(data, name, None)):
+                        return True
+        return self.photos.exists()
 
     def refresh_status(self, save=True):
-        """Recalculate status from section progress."""
-        done = self.completed_section_count
-        total = self.total_section_count
-        if done == 0:
-            self.status = "not_started"
-        elif total and done >= total:
+        """Status follows the completion flag, then whether anything exists."""
+        if self.is_complete:
             self.status = "complete"
-        else:
+        elif self.has_data:
             self.status = "in_progress"
+        else:
+            self.status = "not_started"
         if save:
             self.save(update_fields=["status", "updated_at"])
         return self.status
@@ -333,20 +356,18 @@ class CulvertData(BaseInspectionData):
 # SectionProgress
 # ---------------------------------------------------------------------
 class SectionProgress(models.Model):
-    """Per-section completion and save time.
+    """Audit trail of section saves: who committed what, and when.
 
-    Tracked explicitly rather than inferred from non-null fields,
-    because a legitimately empty section (no wingwalls on this bridge)
-    is otherwise indistinguishable from one never visited. The
-    saved_at timestamp also answers 'did my save actually go through'
-    when someone is standing in a field with one bar of signal.
+    No completion flag - completeness is measured from the fields that
+    actually hold values. This exists so the app can answer 'did my
+    save go through' when someone is standing in a field with one bar
+    of signal.
     """
 
     inspection = models.ForeignKey(
         Inspection, on_delete=models.CASCADE, related_name="section_progress"
     )
     section_key = models.CharField(max_length=40, choices=all_section_key_choices())
-    is_complete = models.BooleanField(default=False)
     saved_at = models.DateTimeField(auto_now=True)
     saved_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True,
@@ -354,8 +375,7 @@ class SectionProgress(models.Model):
     )
 
     def __str__(self):
-        state = "complete" if self.is_complete else "in progress"
-        return f"{self.inspection} / {self.section_key} ({state})"
+        return f"{self.inspection} / {self.section_key}"
 
     class Meta:
         verbose_name_plural = "Section progress"

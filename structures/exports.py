@@ -79,7 +79,7 @@ def build_asset_workbook(asset, visit):
     """
     inspection = _inspection_for(asset, visit)
     data = inspection.data if inspection else None
-    complete_keys = inspection.completed_section_keys if inspection else set()
+    coverage = inspection.section_coverage() if inspection else {}
     model = type(data) if data is not None else None
 
     workbook = Workbook()
@@ -100,8 +100,14 @@ def build_asset_workbook(asset, visit):
         ("Visit", visit),
         ("Status", inspection.get_status_display() if inspection else "Not started"),
         (
-            "Sections complete",
-            f"{len(complete_keys)} of {len(get_sections(asset.asset_type))}",
+            "Fields recorded",
+            f"{inspection.coverage[0]} of {inspection.coverage[1]}"
+            if inspection
+            else "0",
+        ),
+        (
+            "Inspection complete",
+            "Yes" if inspection and inspection.is_complete else "No",
         ),
         ("Latitude", asset.latitude if asset.latitude is not None else ""),
         ("Longitude", asset.longitude if asset.longitude is not None else ""),
@@ -127,10 +133,11 @@ def build_asset_workbook(asset, visit):
         worksheet.cell(row=row, column=2).fill = fill
         worksheet.cell(row=row, column=3).fill = fill
 
+        filled, total_fields = coverage.get(section["key"], (0, 0))
         status_cell = worksheet.cell(
             row=row,
             column=3,
-            value="Complete" if section["key"] in complete_keys else "Not recorded",
+            value=f"{filled}/{total_fields} recorded" if total_fields else "",
         )
         status_cell.font = HEADER_FONT
         status_cell.alignment = Alignment(horizontal="right")
@@ -177,8 +184,9 @@ def build_full_workbook(visit):
     summary = workbook.create_sheet("Summary")
     summary_headers = [
         "Structure code", "Type", "Type details", "Batch", "New route",
-        "Old route", "Status", "Sections complete", "Sections total",
-        "Photos", "Latitude", "Longitude", "Last updated", "Updated by",
+        "Old route", "Status", "Complete", "Fields recorded", "Fields total",
+        "Coverage %", "Photos", "Latitude", "Longitude", "Last updated",
+        "Updated by",
     ]
     summary.append(summary_headers)
     for index in range(1, len(summary_headers) + 1):
@@ -194,7 +202,7 @@ def build_full_workbook(visit):
 
         base_headers = [
             "Structure code", "Type details", "Batch", "New route", "Old route",
-            "Status", "Sections complete", "Latitude", "Longitude",
+            "Status", "Complete", "Coverage %", "Latitude", "Longitude",
         ]
         field_headers = []
         field_names = []
@@ -229,7 +237,6 @@ def build_full_workbook(visit):
         for asset in assets:
             inspection = _inspection_for(asset, visit)
             data = inspection.data if inspection else None
-            complete_keys = inspection.completed_section_keys if inspection else set()
             photos = list(inspection.photos.all()) if inspection else []
 
             row = [
@@ -239,7 +246,8 @@ def build_full_workbook(visit):
                 asset.route_new,
                 asset.route_old,
                 inspection.get_status_display() if inspection else "Not started",
-                len(complete_keys),
+                "Yes" if inspection and inspection.is_complete else "No",
+                inspection.coverage_percent if inspection else 0,
                 asset.latitude if asset.latitude is not None else "",
                 asset.longitude if asset.longitude is not None else "",
             ]
@@ -267,8 +275,10 @@ def build_full_workbook(visit):
                     asset.route_new,
                     asset.route_old,
                     inspection.get_status_display() if inspection else "Not started",
-                    len(complete_keys),
-                    len(sections),
+                    "Yes" if inspection and inspection.is_complete else "No",
+                    inspection.coverage[0] if inspection else 0,
+                    inspection.coverage[1] if inspection else 0,
+                    inspection.coverage_percent if inspection else 0,
                     len(photos),
                     asset.latitude if asset.latitude is not None else "",
                     asset.longitude if asset.longitude is not None else "",
