@@ -144,6 +144,12 @@
             <i class="bi bi-bank me-1"></i>Structures Inspection
         </a>
         <div class="d-flex align-items-center gap-2">
+            {% if user.is_superuser %}
+            <a href="{% url 'admin:index' %}" class="btn btn-outline-light btn-sm py-1"
+               title="Django admin">
+                <i class="bi bi-gear"></i>
+            </a>
+            {% endif %}
             <span class="text-white-50 small">{{ user.username }}</span>
             <a href="{% url 'logout' %}" class="btn btn-outline-light btn-sm py-1">
                 <i class="bi bi-box-arrow-right"></i>
