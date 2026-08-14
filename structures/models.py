@@ -93,6 +93,10 @@ class Asset(models.Model):
     route_new = models.CharField(max_length=50, blank=True, verbose_name="New route name")
     route_old = models.CharField(max_length=50, blank=True, verbose_name="Old route name")
     google_maps_url = models.URLField(max_length=500, blank=True)
+    # Derived from the maps hyperlink at import time, so assets can be
+    # plotted without any extra data entry.
+    latitude = models.FloatField(null=True, blank=True)
+    longitude = models.FloatField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
 
     @staticmethod
