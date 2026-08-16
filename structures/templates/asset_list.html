@@ -34,6 +34,10 @@
     </div>
 </div>
 
+<a href="{% url 'create_asset' asset_type %}" class="btn btn-outline-dark w-100 mb-3">
+    <i class="bi bi-plus-lg me-2"></i>Add {% if asset_type == "STR" %}structure{% else %}culvert{% endif %} found on site
+</a>
+
 <div class="mb-3">
     <input type="search" id="assetFilter" class="form-control"
            placeholder="Filter by code, route or type…" autocomplete="off">
@@ -45,7 +49,13 @@
        data-search="{{ row.asset.structure_code|lower }} {{ row.asset.type_details|lower }} {{ row.asset.route_new|lower }} {{ row.asset.route_old|lower }}">
         <div class="d-flex justify-content-between align-items-start">
             <div class="pe-2">
-                <div class="code">{{ row.asset.structure_code }}</div>
+                <div class="code">
+                    {{ row.asset.structure_code }}
+                    {% if row.asset.is_user_created %}
+                    <span class="badge text-bg-light text-muted"
+                          style="font-size:0.6rem;vertical-align:middle">SITE</span>
+                    {% endif %}
+                </div>
                 <div class="details">{{ row.asset.type_details|default:"—" }}</div>
                 <div class="route">
                     {{ row.asset.route_new }}

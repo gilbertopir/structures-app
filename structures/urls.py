@@ -10,6 +10,13 @@ urlpatterns = [
     path("structures/", views.structure_list, name="structure_list"),
     path("culverts/", views.culvert_list, name="culvert_list"),
     path("data/", views.data_view, name="data_view"),
+    path("new/<str:asset_type>/", views.create_asset, name="create_asset"),
+    path("asset/<str:structure_code>/edit/", views.edit_asset, name="edit_asset"),
+    path(
+        "asset/<str:structure_code>/delete/",
+        views.delete_asset,
+        name="delete_asset",
+    ),
     path("asset/<str:structure_code>/", views.asset_detail, name="asset_detail"),
     path(
         "asset/<str:structure_code>/section/<str:section_key>/commit/",

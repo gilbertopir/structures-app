@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 
@@ -6,6 +7,7 @@ from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.db.models import Count
 from django.http import FileResponse, JsonResponse
+from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.text import slugify
@@ -154,6 +156,173 @@ def structure_list(request):
 @login_required
 def culvert_list(request):
     return asset_list(request, "CUL")
+
+
+# ---------------------------------------------------------------------
+# Field-created assets
+# ---------------------------------------------------------------------
+def _route_lookup():
+    """Route options plus a JSON-friendly map for the form's JS."""
+    options = Asset.route_options()
+    lookup = {
+        entry["route_new"]: {
+            "batch": entry["batch"],
+            "batches": entry["batches"],
+            "old_routes": entry["old_routes"],
+            "old_route": entry["old_route"],
+        }
+        for entry in options
+    }
+    return options, lookup
+
+
+@login_required
+def create_asset(request, asset_type):
+    """Add a structure or culvert spotted on site.
+
+    Route is chosen; batch and old route are derived from the existing
+    assets on that route, because the data shows batch is determined by
+    route. The code is allocated by the server so nobody types a number
+    that could collide with the client's register.
+    """
+    if asset_type not in ("STR", "CUL"):
+        return redirect("structure_list")
+
+    profile = getattr(request.user, "profile", None)
+    if profile is not None and profile.is_reviewer():
+        messages.error(request, "Your account is read only.")
+        return redirect("structure_list")
+
+    options, lookup = _route_lookup()
+    error = None
+
+    if request.method == "POST":
+        route_new = request.POST.get("route_new", "").strip()
+        route_old = request.POST.get("route_old", "").strip()
+        type_details = request.POST.get("type_details", "").strip()
+
+        if not route_new:
+            error = "Choose a route."
+        else:
+            entry = lookup.get(route_new, {})
+            batch = entry.get("batch", "")
+            if not route_old:
+                route_old = entry.get("old_route", "")
+
+            asset = Asset.objects.create(
+                structure_code=Asset.next_field_code(route_new, asset_type),
+                asset_type=asset_type,
+                type_details=type_details,
+                batch=batch,
+                route_new=route_new,
+                route_old=route_old,
+                is_user_created=True,
+                created_by=request.user,
+            )
+            messages.success(request, f"{asset.structure_code} created.")
+            return redirect("asset_detail", structure_code=asset.structure_code)
+
+    context = {
+        "asset_type": asset_type,
+        "options": options,
+        "lookup_json": json.dumps(lookup),
+        "error": error,
+        "page_title": "New structure" if asset_type == "STR" else "New culvert",
+        "is_edit": False,
+        **ACCENTS[asset_type],
+    }
+    return render(request, "asset_form.html", context)
+
+
+@login_required
+def edit_asset(request, structure_code):
+    """Change a field-created asset.
+
+    Type details stay editable for the life of the asset. Route and
+    type may only change while nothing has been recorded, because
+    changing either reallocates the code.
+    """
+    asset = get_object_or_404(Asset, structure_code=structure_code.upper())
+
+    if not asset.is_user_created:
+        messages.error(request, "Assets from the register cannot be edited.")
+        return redirect("asset_detail", structure_code=asset.structure_code)
+
+    profile = getattr(request.user, "profile", None)
+    if profile is not None and profile.is_reviewer():
+        messages.error(request, "Your account is read only.")
+        return redirect("asset_detail", structure_code=asset.structure_code)
+
+    options, lookup = _route_lookup()
+    editable = asset.can_be_edited
+    error = None
+
+    if request.method == "POST":
+        asset.type_details = request.POST.get("type_details", "").strip()
+
+        if editable:
+            route_new = request.POST.get("route_new", "").strip()
+            route_old = request.POST.get("route_old", "").strip()
+            new_type = request.POST.get("asset_type", asset.asset_type)
+
+            if not route_new:
+                error = "Choose a route."
+            else:
+                entry = lookup.get(route_new, {})
+                changed = route_new != asset.route_new or new_type != asset.asset_type
+                asset.route_new = route_new
+                asset.batch = entry.get("batch", "")
+                asset.route_old = route_old or entry.get("old_route", "")
+                asset.asset_type = new_type
+                if changed:
+                    asset.structure_code = Asset.next_field_code(route_new, new_type)
+
+        if error is None:
+            asset.save()
+            messages.success(request, f"{asset.structure_code} updated.")
+            return redirect("asset_detail", structure_code=asset.structure_code)
+
+    context = {
+        "asset": asset,
+        "asset_type": asset.asset_type,
+        "options": options,
+        "lookup_json": json.dumps(lookup),
+        "error": error,
+        "editable": editable,
+        "page_title": f"Edit {asset.structure_code}",
+        "is_edit": True,
+        **ACCENTS.get(asset.asset_type, ACCENTS["STR"]),
+    }
+    return render(request, "asset_form.html", context)
+
+
+@login_required
+@require_POST
+def delete_asset(request, structure_code):
+    """Remove a field-created asset, but only while it holds nothing."""
+    asset = get_object_or_404(Asset, structure_code=structure_code.upper())
+
+    if not asset.is_user_created:
+        messages.error(request, "Assets from the register cannot be deleted.")
+        return redirect("asset_detail", structure_code=asset.structure_code)
+
+    profile = getattr(request.user, "profile", None)
+    if profile is not None and profile.is_reviewer():
+        messages.error(request, "Your account is read only.")
+        return redirect("asset_detail", structure_code=asset.structure_code)
+
+    if asset.has_captured_data:
+        messages.error(
+            request,
+            "This asset holds recorded data. Clear it before deleting.",
+        )
+        return redirect("asset_detail", structure_code=asset.structure_code)
+
+    code = asset.structure_code
+    target = "structure_list" if asset.asset_type == "STR" else "culvert_list"
+    asset.delete()
+    messages.success(request, f"{code} deleted.")
+    return redirect(target)
 
 
 # ---------------------------------------------------------------------

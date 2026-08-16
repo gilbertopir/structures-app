@@ -94,6 +94,7 @@ def build_asset_workbook(asset, visit):
 
     meta_rows = [
         ("Type", asset.get_asset_type_display()),
+        ("Source", "Added on site" if asset.is_user_created else "Asset register"),
         ("Type details", asset.type_details),
         ("Route", f"{asset.route_new} ({asset.route_old})".strip(" ()")),
         ("Batch", asset.batch),
@@ -202,7 +203,7 @@ def build_full_workbook(visit):
 
         base_headers = [
             "Structure code", "Type details", "Batch", "New route", "Old route",
-            "Status", "Complete", "Coverage %", "Latitude", "Longitude",
+            "Status", "Complete", "Coverage %", "Source", "Latitude", "Longitude",
         ]
         field_headers = []
         field_names = []
@@ -248,6 +249,7 @@ def build_full_workbook(visit):
                 inspection.get_status_display() if inspection else "Not started",
                 "Yes" if inspection and inspection.is_complete else "No",
                 inspection.coverage_percent if inspection else 0,
+                "Site" if asset.is_user_created else "Register",
                 asset.latitude if asset.latitude is not None else "",
                 asset.longitude if asset.longitude is not None else "",
             ]

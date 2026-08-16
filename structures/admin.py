@@ -66,12 +66,17 @@ class AssetAdmin(admin.ModelAdmin):
         "maps_link",
         "is_active",
     )
-    list_filter = ("asset_type", "batch", "route_new", "is_active")
+    list_filter = ("asset_type", "is_user_created", "batch", "route_new", "is_active")
     search_fields = ("structure_code", "type_details", "route_new", "route_old")
     ordering = ("structure_code",)
-    readonly_fields = ("asset_type",)
+    readonly_fields = ("asset_type", "created_at")
     fieldsets = (
-        (None, {"fields": ("structure_code", "asset_type", "type_details", "is_active")}),
+        (None, {
+            "fields": (
+                "structure_code", "asset_type", "type_details", "is_active",
+                "is_user_created", "created_by", "created_at",
+            )
+        }),
         ("Route", {"fields": ("batch", "route_new", "route_old")}),
         ("Location", {"fields": ("google_maps_url", "latitude", "longitude")}),
     )

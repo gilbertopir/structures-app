@@ -32,9 +32,15 @@ STATUS_CHOICES = [
     ("complete", "Complete"),
 ]
 
-# Matches the suffix that determines which tab an asset belongs to,
-# e.g. B0870-CUL01 -> CUL, U3521-STR06 -> STR
-ASSET_CODE_RE = re.compile(r"-(STR|CUL)\d+$", re.IGNORECASE)
+# Matches the suffix that determines which tab an asset belongs to.
+# The optional S marks an asset created in the field rather than one
+# from the client's register: B0870-CUL01 -> CUL, B0870-CULS01 -> CUL.
+ASSET_CODE_RE = re.compile(r"-(STR|CUL)S?(\d+)$", re.IGNORECASE)
+
+# Prefix used for assets added on site. Numbered separately from the
+# register so a field asset can never collide with an official code
+# issued later.
+FIELD_PREFIX = {"STR": "STRS", "CUL": "CULS"}
 
 
 def mm(verbose_name):
@@ -93,6 +99,15 @@ class Asset(models.Model):
     route_new = models.CharField(max_length=50, blank=True, verbose_name="New route name")
     route_old = models.CharField(max_length=50, blank=True, verbose_name="Old route name")
     google_maps_url = models.URLField(max_length=500, blank=True)
+    # Added on site rather than imported. The import command leaves
+    # these alone, so --deactivate-missing cannot switch off an asset
+    # simply because it was never in the spreadsheet.
+    is_user_created = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="assets_created",
+    )
     # Derived from the maps hyperlink at import time, so assets can be
     # plotted without any extra data entry.
     latitude = models.FloatField(null=True, blank=True)
@@ -104,6 +119,69 @@ class Asset(models.Model):
         """'B0870-CUL01' -> 'CUL'. Returns '' if the code doesn't match."""
         match = ASSET_CODE_RE.search(structure_code or "")
         return match.group(1).upper() if match else ""
+
+    @classmethod
+    def route_options(cls):
+        """Routes with the batch and old-route values seen against them.
+
+        Derived from the data rather than hardcoded, so re-importing a
+        revised spreadsheet updates the choices with nothing to
+        maintain. Batch is determined by route in the current data, so
+        the field form fills it rather than asking.
+        """
+        options = {}
+        for asset in cls.objects.exclude(route_new="").order_by("route_new"):
+            entry = options.setdefault(
+                asset.route_new, {"route_new": asset.route_new, "batches": set(),
+                                  "old_routes": set()}
+            )
+            if asset.batch:
+                entry["batches"].add(asset.batch)
+            if asset.route_old:
+                entry["old_routes"].add(asset.route_old)
+
+        result = []
+        for entry in options.values():
+            batches = sorted(entry["batches"])
+            old_routes = sorted(entry["old_routes"])
+            result.append(
+                {
+                    "route_new": entry["route_new"],
+                    "batch": batches[0] if len(batches) == 1 else "",
+                    "batches": batches,
+                    "old_routes": old_routes,
+                    # A9 spans PR206 and PR207, so that one has to be asked.
+                    "old_route": old_routes[0] if len(old_routes) == 1 else "",
+                }
+            )
+        return result
+
+    @classmethod
+    def next_field_code(cls, route_new, asset_type):
+        """Next free field code for a route, e.g. 'B0870-STRS01'."""
+        prefix = FIELD_PREFIX[asset_type]
+        pattern = re.compile(rf"-{prefix}(\d+)$", re.IGNORECASE)
+        numbers = []
+        for code in cls.objects.filter(
+            route_new=route_new, structure_code__icontains=f"-{prefix}"
+        ).values_list("structure_code", flat=True):
+            match = pattern.search(code)
+            if match:
+                numbers.append(int(match.group(1)))
+        return f"{route_new}-{prefix}{(max(numbers) + 1) if numbers else 1:02d}"
+
+    @property
+    def has_captured_data(self):
+        """True once anything has been recorded against this asset."""
+        for inspection in self.inspections.all():
+            if inspection.has_data:
+                return True
+        return False
+
+    @property
+    def can_be_edited(self):
+        """Route and type stay changeable only while the asset is empty."""
+        return self.is_user_created and not self.has_captured_data
 
     def save(self, *args, **kwargs):
         self.structure_code = (self.structure_code or "").strip().upper()
@@ -394,9 +472,19 @@ class SectionProgress(models.Model):
 # InspectionPhoto
 # ---------------------------------------------------------------------
 def photo_upload_path(instance, filename):
-    """photos/<structure_code>/<section_key>/<filename>"""
-    code = instance.inspection.asset.structure_code
-    return os.path.join("photos", code, instance.section_key, filename)
+    """photos/<asset_id>/<section_key>/<filename>
+
+    Keyed by database id rather than structure code so that renaming a
+    field-created asset is a pure database update - the files never
+    move. The zip export rebuilds friendly folder names from the code
+    at download time.
+    """
+    return os.path.join(
+        "photos",
+        str(instance.inspection.asset_id),
+        instance.section_key,
+        filename,
+    )
 
 
 class InspectionPhoto(models.Model):

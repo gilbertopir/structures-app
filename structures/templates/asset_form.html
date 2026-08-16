@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title }} — Structures Inspection{% endblock %}
+{% block accent %}{{ accent }}{% endblock %}
+{% block accent_soft %}{{ accent_soft }}{% endblock %}
+{% block theme_colour %}{{ accent }}{% endblock %}
+{% block nav_str %}{% if asset_type == "STR" %}active{% endif %}{% endblock %}
+{% block nav_cul %}{% if asset_type == "CUL" %}active{% endif %}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .field-label { font-weight: 600; font-size: 0.9rem; margin-bottom: 0.25rem; }
+    .derived {
+        background: #f8f9fa;
+        border: 1px solid #e9ecef;
+        border-radius: 8px;
+        padding: 0.7rem 0.9rem;
+        font-size: 0.9rem;
+    }
+    .derived .k { color: #6c757d; }
+    .derived .v { font-weight: 700; }
+    .locked-note {
+        background: #fff3cd;
+        border: 1px solid #ffe69c;
+        border-radius: 8px;
+        padding: 0.6rem 0.9rem;
+        font-size: 0.85rem;
+        color: #664d03;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h5>
+        <i class="bi {% if asset_type == 'STR' %}bi-bank{% else %}bi-water{% endif %} me-2"></i>
+        {{ page_title }}
+    </h5>
+    <small>
+        {% if is_edit %}Added on site{% else %}Not on the asset register{% endif %}
+    </small>
+</div>
+
+{% if not is_edit %}
+<div class="alert alert-warning py-2 small" role="alert">
+    <i class="bi bi-exclamation-triangle-fill me-1"></i>
+    <strong>Check the route before creating.</strong>
+    The route and type set the asset code, and both lock as soon as any
+    data is recorded. The description stays editable at any time.
+</div>
+{% endif %}
+
+{% if error %}
+<div class="alert alert-danger py-2">
+    <i class="bi bi-exclamation-triangle me-1"></i>{{ error }}
+</div>
+{% endif %}
+
+{% if is_edit and not editable %}
+<div class="locked-note mb-3">
+    <i class="bi bi-lock-fill me-1"></i>
+    Data has been recorded against {{ asset.structure_code }}, so the route and
+    type are locked. Only the description can be changed.
+</div>
+{% endif %}
+
+<form method="POST">
+    {% csrf_token %}
+
+    {% if not is_edit or editable %}
+    <div class="mb-3">
+        <div class="field-label">Route</div>
+        <select name="route_new" id="routeSelect" class="form-select" required>
+            <option value="">Choose a route…</option>
+            {% for option in options %}
+            <option value="{{ option.route_new }}"
+                {% if asset.route_new == option.route_new %}selected{% endif %}>
+                {{ option.route_new }}
+            </option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="mb-3" id="oldRouteWrap" style="display:none">
+        <div class="field-label">Old route name</div>
+        <select name="route_old" id="oldRouteSelect" class="form-select"></select>
+        <div class="small text-muted mt-1">
+            This route covers more than one old reference — pick the right one.
+        </div>
+    </div>
+
+    <div class="mb-3">
+        <div class="field-label">Type</div>
+        <select name="asset_type" class="form-select">
+            <option value="STR" {% if asset_type == "STR" %}selected{% endif %}>Structure</option>
+            <option value="CUL" {% if asset_type == "CUL" %}selected{% endif %}>Culvert</option>
+        </select>
+    </div>
+    {% endif %}
+
+    <div class="mb-3">
+        <div class="field-label">Description</div>
+        <input type="text" name="type_details" class="form-control" maxlength="200"
+               value="{{ asset.type_details|default:'' }}"
+               placeholder="e.g. Small stone arch under farm track">
+        <div class="small text-muted mt-1">
+            What it is, in your own words. Editable at any time.
+        </div>
+    </div>
+
+    <div class="derived mb-3">
+        <div class="d-flex justify-content-between">
+            <span class="k">Asset code</span>
+            <span class="v" id="previewCode">
+                {% if is_edit %}{{ asset.structure_code }}{% else %}—{% endif %}
+            </span>
+        </div>
+        <div class="d-flex justify-content-between mt-1">
+            <span class="k">Batch</span>
+            <span class="v" id="previewBatch">
+                {% if is_edit %}{{ asset.batch|default:"—" }}{% else %}—{% endif %}
+            </span>
+        </div>
+        <div class="small text-muted mt-2">
+            Both are set automatically from the route.
+        </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary w-100"
+            style="background:var(--accent);border-color:var(--accent)">
+        <i class="bi {% if is_edit %}bi-check-lg{% else %}bi-plus-lg{% endif %} me-2"></i>
+        {% if is_edit %}Save changes{% else %}Create asset{% endif %}
+    </button>
+</form>
+
+<a href="{% if is_edit %}{% url 'asset_detail' asset.structure_code %}{% elif asset_type == 'STR' %}{% url 'structure_list' %}{% else %}{% url 'culvert_list' %}{% endif %}"
+   class="btn btn-outline-secondary w-100 mt-2 mb-3">
+    Cancel
+</a>
+
+{% if is_edit and asset.can_be_edited %}
+<form method="POST" action="{% url 'delete_asset' asset.structure_code %}"
+      onsubmit="return confirm('Delete {{ asset.structure_code }}? This cannot be undone.');">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-outline-danger w-100 mb-4">
+        <i class="bi bi-trash me-2"></i>Delete asset
+    </button>
+</form>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    const LOOKUP = {{ lookup_json|safe }};
+    const routeSelect = document.getElementById('routeSelect');
+    if (!routeSelect) return;
+
+    const oldWrap = document.getElementById('oldRouteWrap');
+    const oldSelect = document.getElementById('oldRouteSelect');
+    const previewCode = document.getElementById('previewCode');
+    const previewBatch = document.getElementById('previewBatch');
+    const typeSelect = document.querySelector('[name=asset_type]');
+    const currentOld = "{{ asset.route_old|default:'' }}";
+
+    function refresh() {
+        const route = routeSelect.value;
+        const entry = LOOKUP[route];
+
+        if (!entry) {
+            oldWrap.style.display = 'none';
+            previewBatch.textContent = '—';
+            previewCode.textContent = '—';
+            return;
+        }
+
+        previewBatch.textContent = entry.batch || '—';
+
+        // Only ask for the old route where a route spans more than one.
+        if (entry.old_routes.length > 1) {
+            oldSelect.innerHTML = entry.old_routes
+                .map(value => '<option value="' + value + '"' +
+                     (value === currentOld ? ' selected' : '') + '>' + value + '</option>')
+                .join('');
+            oldWrap.style.display = '';
+        } else {
+            oldWrap.style.display = 'none';
+            oldSelect.innerHTML = '';
+        }
+
+        // Indicative only — the server allocates the real number, so two
+        // engineers creating at once can never be given the same code.
+        const prefix = typeSelect.value === 'STR' ? 'STRS' : 'CULS';
+        previewCode.textContent = route + '-' + prefix + 'nn';
+    }
+
+    routeSelect.addEventListener('change', refresh);
+    typeSelect.addEventListener('change', refresh);
+    refresh();
+})();
+</script>
+{% endblock %}
