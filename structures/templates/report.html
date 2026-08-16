@@ -116,6 +116,34 @@
     </div>
 </div>
 
+{% if observed_fix %}
+<div class="metric-card mb-3">
+    <div class="metric-label">Observed location</div>
+    <div class="small">
+        <i class="bi bi-geo-alt-fill me-1" style="color:var(--accent)"></i>
+        {{ observed_fix.latitude|floatformat:6 }},
+        {{ observed_fix.longitude|floatformat:6 }}
+        {% if observed_fix.accuracy_m %}
+            <span class="text-muted">(±{{ observed_fix.accuracy_m|floatformat:0 }} m)</span>
+        {% endif %}
+    </div>
+    <div class="small text-muted mt-1">
+        Best of {{ fix_count }} fix{{ fix_count|pluralize:"es" }} taken on site.
+        {% if asset.latitude %}
+            Register position: {{ asset.latitude|floatformat:6 }},
+            {{ asset.longitude|floatformat:6 }}.
+        {% else %}
+            No register position for this asset.
+        {% endif %}
+    </div>
+    <a class="btn btn-sm btn-outline-dark mt-2"
+       href="https://www.google.com/maps/search/?api=1&query={{ observed_fix.latitude }},{{ observed_fix.longitude }}"
+       target="_blank" rel="noopener">
+        <i class="bi bi-map me-1"></i>Open observed position
+    </a>
+</div>
+{% endif %}
+
 {% if inspection and inspection.updated_at %}
 <p class="text-muted small mb-3">
     <i class="bi bi-clock-history me-1"></i>

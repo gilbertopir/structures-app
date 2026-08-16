@@ -204,6 +204,26 @@
     </div>
     {% endfor %}
 
+    <div class="metric-card mb-2" id="gpsCard">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <div class="metric-label">Location</div>
+                <div class="small" id="gpsStatus">Looking for GPS…</div>
+            </div>
+            <i class="bi bi-geo-alt text-muted" id="gpsIcon" style="font-size:1.4rem"></i>
+        </div>
+        <div class="small text-muted mt-1" id="gpsStored">
+            {% if observed_fix %}
+                Best fix so far: {{ observed_fix.latitude|floatformat:6 }},
+                {{ observed_fix.longitude|floatformat:6 }}
+                {% if observed_fix.accuracy_m %}(±{{ observed_fix.accuracy_m|floatformat:0 }} m){% endif %}
+                · {{ fix_count }} recorded
+            {% else %}
+                No position recorded yet — one is saved with each commit.
+            {% endif %}
+        </div>
+    </div>
+
     <button type="button" id="completeBtn"
             class="btn w-100 mt-3 {% if inspection.is_complete %}btn-success{% else %}btn-outline-success{% endif %}">
         <i class="bi {% if inspection.is_complete %}bi-check-circle-fill{% else %}bi-check-circle{% endif %} me-2"
@@ -364,6 +384,65 @@
     document.querySelectorAll('.section-panel form').forEach(form => {
         form.addEventListener('input', () => { touched = true; });
     });
+
+    // ------------------------------------------------------------------
+    // Location
+    //
+    // Asked for on page load and refreshed in the background, so that a
+    // commit attaches whatever fix already exists. A cold fix in a glen
+    // can take half a minute; waiting for one at commit time would undo
+    // the whole point of a sub-second save.
+    // ------------------------------------------------------------------
+    let currentFix = null;
+
+    function describeFix(fix) {
+        if (!fix) return 'No fix yet';
+        const accuracy = fix.accuracy ? ' (±' + Math.round(fix.accuracy) + ' m)' : '';
+        return fix.latitude.toFixed(6) + ', ' + fix.longitude.toFixed(6) + accuracy;
+    }
+
+    function setGpsStatus(text, icon, colour) {
+        document.getElementById('gpsStatus').textContent = text;
+        const element = document.getElementById('gpsIcon');
+        element.className = 'bi ' + icon + ' ' + colour;
+        element.style.fontSize = '1.4rem';
+    }
+
+    function onPosition(position) {
+        currentFix = {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: position.coords.accuracy,
+        };
+        const good = currentFix.accuracy && currentFix.accuracy <= 25;
+        setGpsStatus(
+            describeFix(currentFix),
+            'bi-geo-alt-fill',
+            good ? 'text-success' : 'text-warning'
+        );
+    }
+
+    function onPositionError(error) {
+        currentFix = null;
+        const message =
+            error.code === 1 ? 'Location permission denied' :
+            error.code === 3 ? 'GPS timed out — still trying' :
+                               'GPS unavailable';
+        setGpsStatus(message, 'bi-geo-alt', 'text-muted');
+    }
+
+    if ('geolocation' in navigator) {
+        navigator.geolocation.getCurrentPosition(onPosition, onPositionError, {
+            enableHighAccuracy: true, timeout: 20000, maximumAge: 60000,
+        });
+        // Keep refining while the inspector works; watchPosition only
+        // fires when the fix actually changes, so this is cheap.
+        navigator.geolocation.watchPosition(onPosition, onPositionError, {
+            enableHighAccuracy: true, timeout: 30000, maximumAge: 30000,
+        });
+    } else {
+        setGpsStatus('Not supported on this device', 'bi-geo-alt', 'text-muted');
+    }
 
     // ------------------------------------------------------------------
     // Photo batches
@@ -527,6 +606,12 @@
     // ------------------------------------------------------------------
     async function commit(key, button) {
         const form = document.querySelector('#panel-' + key + ' form');
+        const payload = new FormData(form);
+        if (currentFix) {
+            payload.append('gps_lat', currentFix.latitude);
+            payload.append('gps_lon', currentFix.longitude);
+            if (currentFix.accuracy) payload.append('gps_acc', currentFix.accuracy);
+        }
         const original = button.innerHTML;
         button.disabled = true;
         button.innerHTML =
@@ -535,7 +620,7 @@
         try {
             const response = await fetch(
                 '/asset/' + encodeURIComponent(CODE) + '/section/' + key + '/commit/',
-                { method: 'POST', body: new FormData(form) }
+                { method: 'POST', body: payload }
             );
             const result = await response.json();
             if (!response.ok || !result.ok) throw new Error(result.error || 'Save failed');
@@ -559,7 +644,16 @@
             document.getElementById('filledCount').textContent = result.filled;
             document.getElementById('progressBar').style.width = result.percent + '%';
 
-            showToast('Saved to server', 'success');
+            if (result.gps_saved) {
+                document.getElementById('gpsStored').textContent =
+                    'Best fix so far: ' + describeFix(currentFix) +
+                    ' · ' + result.fix_count + ' recorded';
+            }
+
+            showToast(
+                result.gps_saved ? 'Saved with location' : 'Saved to server',
+                'success'
+            );
             showHub();
         } catch (error) {
             showToast('Not saved — ' + error.message + '. Try again.', 'error');

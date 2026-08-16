@@ -81,6 +81,11 @@ def build_asset_workbook(asset, visit):
     data = inspection.data if inspection else None
     coverage = inspection.section_coverage() if inspection else {}
     model = type(data) if data is not None else None
+    fixes = (
+        {record.section_key: record for record in inspection.section_progress.all()}
+        if inspection
+        else {}
+    )
 
     workbook = Workbook()
     worksheet = workbook.active
@@ -110,8 +115,27 @@ def build_asset_workbook(asset, visit):
             "Inspection complete",
             "Yes" if inspection and inspection.is_complete else "No",
         ),
-        ("Latitude", asset.latitude if asset.latitude is not None else ""),
-        ("Longitude", asset.longitude if asset.longitude is not None else ""),
+        ("Register latitude", asset.latitude if asset.latitude is not None else ""),
+        ("Register longitude", asset.longitude if asset.longitude is not None else ""),
+        (
+            "Observed latitude",
+            inspection.observed_latitude
+            if inspection and inspection.observed_latitude is not None
+            else "",
+        ),
+        (
+            "Observed longitude",
+            inspection.observed_longitude
+            if inspection and inspection.observed_longitude is not None
+            else "",
+        ),
+        (
+            "Observed accuracy (m)",
+            round(inspection.observed_accuracy)
+            if inspection and inspection.observed_accuracy is not None
+            else "",
+        ),
+        ("GPS fixes recorded", inspection.fix_count if inspection else 0),
         ("Google Maps", asset.google_maps_url),
         (
             "Last updated",
@@ -150,6 +174,21 @@ def build_asset_workbook(asset, visit):
             worksheet.cell(row=row, column=2, value=_display_value(data, field_name))
             row += 1
 
+        record = fixes.get(section["key"])
+        if record is not None and record.latitude is not None:
+            worksheet.cell(row=row, column=1, value="Location").font = SECTION_FONT
+            accuracy = (
+                f"  (±{round(record.accuracy_m)} m)"
+                if record.accuracy_m is not None
+                else ""
+            )
+            worksheet.cell(
+                row=row,
+                column=2,
+                value=f"{record.latitude:.6f}, {record.longitude:.6f}{accuracy}",
+            )
+            row += 1
+
         photos = (
             [p for p in inspection.photos.all() if p.section_key == section["key"]]
             if inspection
@@ -186,8 +225,9 @@ def build_full_workbook(visit):
     summary_headers = [
         "Structure code", "Type", "Type details", "Batch", "New route",
         "Old route", "Status", "Complete", "Fields recorded", "Fields total",
-        "Coverage %", "Photos", "Latitude", "Longitude", "Last updated",
-        "Updated by",
+        "Coverage %", "Photos", "Register latitude", "Register longitude",
+        "Observed latitude", "Observed longitude", "Observed accuracy (m)",
+        "GPS fixes", "Last updated", "Updated by",
     ]
     summary.append(summary_headers)
     for index in range(1, len(summary_headers) + 1):
@@ -203,7 +243,9 @@ def build_full_workbook(visit):
 
         base_headers = [
             "Structure code", "Type details", "Batch", "New route", "Old route",
-            "Status", "Complete", "Coverage %", "Source", "Latitude", "Longitude",
+            "Status", "Complete", "Coverage %", "Source",
+            "Register latitude", "Register longitude",
+            "Observed latitude", "Observed longitude", "Observed accuracy (m)",
         ]
         field_headers = []
         field_names = []
@@ -252,6 +294,15 @@ def build_full_workbook(visit):
                 "Site" if asset.is_user_created else "Register",
                 asset.latitude if asset.latitude is not None else "",
                 asset.longitude if asset.longitude is not None else "",
+                inspection.observed_latitude
+                if inspection and inspection.observed_latitude is not None
+                else "",
+                inspection.observed_longitude
+                if inspection and inspection.observed_longitude is not None
+                else "",
+                round(inspection.observed_accuracy)
+                if inspection and inspection.observed_accuracy is not None
+                else "",
             ]
 
             for field_name in field_names:
@@ -284,6 +335,16 @@ def build_full_workbook(visit):
                     len(photos),
                     asset.latitude if asset.latitude is not None else "",
                     asset.longitude if asset.longitude is not None else "",
+                    inspection.observed_latitude
+                    if inspection and inspection.observed_latitude is not None
+                    else "",
+                    inspection.observed_longitude
+                    if inspection and inspection.observed_longitude is not None
+                    else "",
+                    round(inspection.observed_accuracy)
+                    if inspection and inspection.observed_accuracy is not None
+                    else "",
+                    inspection.fix_count if inspection else 0,
                     inspection.updated_at.strftime("%d/%m/%Y %H:%M")
                     if inspection
                     else "",

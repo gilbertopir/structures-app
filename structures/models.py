@@ -288,6 +288,50 @@ class Inspection(models.Model):
                         return True
         return self.photos.exists()
 
+    @property
+    def observed_fix(self):
+        """The most accurate GPS reading taken while inspecting this asset.
+
+        Kept separate from Asset.latitude/longitude, which come from the
+        client's register. Where the two disagree, that difference is
+        sometimes itself worth knowing.
+        """
+        fixes = [
+            record
+            for record in self.section_progress.all()
+            if record.latitude is not None and record.longitude is not None
+        ]
+        if not fixes:
+            return None
+        # Best accuracy wins; unknown accuracy sorts last.
+        return min(
+            fixes,
+            key=lambda r: r.accuracy_m if r.accuracy_m is not None else float("inf"),
+        )
+
+    @property
+    def observed_latitude(self):
+        fix = self.observed_fix
+        return fix.latitude if fix else None
+
+    @property
+    def observed_longitude(self):
+        fix = self.observed_fix
+        return fix.longitude if fix else None
+
+    @property
+    def observed_accuracy(self):
+        fix = self.observed_fix
+        return fix.accuracy_m if fix else None
+
+    @property
+    def fix_count(self):
+        return sum(
+            1
+            for record in self.section_progress.all()
+            if record.latitude is not None
+        )
+
     def refresh_status(self, save=True):
         """Status follows the completion flag, then whether anything exists."""
         if self.is_complete:
@@ -451,6 +495,15 @@ class SectionProgress(models.Model):
     )
     section_key = models.CharField(max_length=40, choices=all_section_key_choices())
     saved_at = models.DateTimeField(auto_now=True)
+    # Where the phone thought it was when this section was committed.
+    # Stored per commit rather than per asset: a single reading taken
+    # under an arch can be badly wrong, but the best of ten is not.
+    latitude = models.FloatField(null=True, blank=True)
+    longitude = models.FloatField(null=True, blank=True)
+    # Radius of uncertainty in metres, as reported by the browser.
+    # Without it a 5 m fix and a 200 m fix look identical on a map.
+    accuracy_m = models.FloatField(null=True, blank=True)
+    fixed_at = models.DateTimeField(null=True, blank=True)
     saved_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True,
         related_name="section_saves",

@@ -115,6 +115,13 @@ def _asset_rows(asset_type):
     return rows
 
 
+def _float_or_none(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _get_or_create_inspection(asset, user):
     """The inspection record exists from the moment an asset is opened.
 
@@ -376,6 +383,7 @@ def asset_detail(request, structure_code):
         )
 
     filled, total_fields = inspection.coverage
+    fix = inspection.observed_fix
 
     context = {
         "asset": asset,
@@ -384,6 +392,8 @@ def asset_detail(request, structure_code):
         "filled": filled,
         "total_fields": total_fields,
         "percent": inspection.coverage_percent,
+        "observed_fix": fix,
+        "fix_count": inspection.fix_count,
         **ACCENTS.get(asset.asset_type, ACCENTS["STR"]),
     }
     return render(request, "capture.html", context)
@@ -430,10 +440,26 @@ def commit_section(request, structure_code, section_key):
 
         form.save()
 
+        # Position is optional by design: the browser is asked for a fix
+        # when the page loads and whatever it has is attached here, so a
+        # slow or absent fix never delays the save.
+        progress_values = {"saved_by": request.user}
+        latitude = _float_or_none(request.POST.get("gps_lat"))
+        longitude = _float_or_none(request.POST.get("gps_lon"))
+        if latitude is not None and longitude is not None:
+            progress_values.update(
+                {
+                    "latitude": latitude,
+                    "longitude": longitude,
+                    "accuracy_m": _float_or_none(request.POST.get("gps_acc")),
+                    "fixed_at": timezone.now(),
+                }
+            )
+
         SectionProgress.objects.update_or_create(
             inspection=inspection,
             section_key=section_key,
-            defaults={"saved_by": request.user},
+            defaults=progress_values,
         )
 
         inspection.updated_by = request.user
@@ -458,6 +484,8 @@ def commit_section(request, structure_code, section_key):
             "percent": int(filled / total * 100) if total else 0,
             "status": inspection.status,
             "saved_at": timezone.localtime().strftime("%H:%M"),
+            "gps_saved": latitude is not None and longitude is not None,
+            "fix_count": inspection.fix_count,
         }
     )
 
@@ -552,6 +580,8 @@ def asset_report(request, structure_code):
         "filled": filled,
         "total_fields": total_fields,
         "percent": inspection.coverage_percent if inspection else 0,
+        "observed_fix": inspection.observed_fix if inspection else None,
+        "fix_count": inspection.fix_count if inspection else 0,
         "total_photos": total_photos,
         "visit": CURRENT_VISIT,
         **ACCENTS.get(asset.asset_type, ACCENTS["STR"]),

@@ -114,7 +114,10 @@ class CulvertDataInline(admin.StackedInline):
 class SectionProgressInline(admin.TabularInline):
     model = SectionProgress
     extra = 0
-    fields = ("section_key", "saved_by", "saved_at")
+    fields = (
+        "section_key", "saved_by", "saved_at",
+        "latitude", "longitude", "accuracy_m",
+    )
     readonly_fields = ("saved_at",)
 
 
