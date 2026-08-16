@@ -158,6 +158,9 @@
     <div class="head">
         <i class="bi {{ section.icon }} sec"></i>
         <span class="label">{{ section.label }}</span>
+        {% if section.has_notes %}
+            <i class="bi bi-journal-check text-success" title="Notes added"></i>
+        {% endif %}
         {% if section.countable %}
             <span class="small {% if section.percent == 100 %}text-success fw-bold{% else %}text-muted{% endif %}">
                 {{ section.filled }}/{{ section.countable }}
@@ -168,6 +171,15 @@
     {% if section.has_values %}
         {% for row in section.rows %}
         <div class="value-row {% if 'note' in row.label|lower %}notes{% endif %}">
+            <span class="k">{{ row.label }}</span>
+            <span class="v {% if row.is_blank %}blank{% endif %}">
+                {% if row.is_blank %}—{% else %}{{ row.value }}{% endif %}
+            </span>
+        </div>
+        {% endfor %}
+    {% elif section.has_notes %}
+        {% for row in section.rows %}
+        <div class="value-row notes">
             <span class="k">{{ row.label }}</span>
             <span class="v {% if row.is_blank %}blank{% endif %}">
                 {% if row.is_blank %}—{% else %}{{ row.value }}{% endif %}

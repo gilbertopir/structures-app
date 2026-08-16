@@ -196,11 +196,14 @@ def build_asset_workbook(asset, visit):
         )
         if photos:
             worksheet.cell(row=row, column=1, value="Photos").font = SECTION_FONT
-            worksheet.cell(
+            cell = worksheet.cell(
                 row=row,
                 column=2,
-                value=", ".join(os.path.basename(p.photo.name) for p in photos),
+                value="\n".join(os.path.basename(p.photo.name) for p in photos),
             )
+            cell.alignment = Alignment(wrap_text=True, vertical="top")
+            worksheet.cell(row=row, column=3, value=f"{len(photos)} photo(s)")
+            worksheet.row_dimensions[row].height = 14 * max(len(photos), 1)
             row += 1
 
         row += 1
@@ -267,6 +270,12 @@ def build_full_workbook(visit):
             field_headers.append(f"{section['label']} — Photos")
             field_names.append(("__photos__", section["key"]))
 
+        photo_columns = [
+            len(base_headers) + index + 1
+            for index, name in enumerate(field_names)
+            if isinstance(name, tuple)
+        ]
+
         headers = base_headers + field_headers
         sheet.append(headers)
         fill = HEADER_FILL if asset_type == "STR" else HEADER_FILL_CUL
@@ -313,7 +322,10 @@ def build_full_workbook(visit):
                         for p in photos
                         if p.section_key == key
                     ]
-                    row.append(", ".join(names))
+                    # One per line rather than comma-separated: with wrap
+                    # turned on below, every filename stays readable in the
+                    # cell instead of being clipped by the column width.
+                    row.append("\n".join(names))
                 else:
                     row.append(_display_value(data, field_name))
 
@@ -355,6 +367,16 @@ def build_full_workbook(visit):
             )
 
         _autosize(sheet, max_width=28)
+
+        # Filenames are long and there may be several per cell, so these
+        # columns get wrapping and extra width rather than being clipped.
+        for column_index in photo_columns:
+            letter = get_column_letter(column_index)
+            sheet.column_dimensions[letter].width = 34
+            for row_index in range(2, sheet.max_row + 1):
+                sheet.cell(row=row_index, column=column_index).alignment = Alignment(
+                    wrap_text=True, vertical="top"
+                )
 
     _autosize(summary)
     summary.freeze_panes = "A2"

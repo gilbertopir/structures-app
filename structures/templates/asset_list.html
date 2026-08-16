@@ -71,11 +71,14 @@
                 {% else %}
                     <span class="badge text-bg-light text-muted badge-status">Not started</span>
                 {% endif %}
-                {% if row.asset.google_maps_url %}
-                <div class="mt-2">
-                    <i class="bi bi-geo-alt text-muted"></i>
+                <div class="route mt-1">
+                    {% if row.photos %}
+                        <i class="bi bi-camera"></i> {{ row.photos }}
+                    {% endif %}
+                    {% if row.has_location %}
+                        <i class="bi bi-geo-alt-fill text-muted ms-1"></i>
+                    {% endif %}
                 </div>
-                {% endif %}
             </div>
         </div>
     </a>

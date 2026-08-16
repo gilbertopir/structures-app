@@ -26,6 +26,7 @@ from .sections import (
     get_sections,
     is_valid_section,
     photo_limit,
+    section_fields,
 )
 
 # The visit this survey round belongs to. Lives here for now; move to
@@ -79,16 +80,19 @@ def logout_view(request):
 # Helpers
 # ---------------------------------------------------------------------
 def _asset_rows(asset_type):
-    """Assets with their recorded-field coverage for the current visit."""
+    """Assets with coverage, photo count and whether their position is known."""
     inspections = {
         inspection.asset_id: inspection
         for inspection in Inspection.objects.filter(
             visit=CURRENT_VISIT, asset__asset_type=asset_type
         )
+        .prefetch_related("photos", "section_progress")
+        .annotate(photo_total=Count("photos", distinct=True))
     }
     rows = []
     for asset in Asset.objects.filter(asset_type=asset_type, is_active=True):
         inspection = inspections.get(asset.id)
+
         if inspection is None:
             rows.append(
                 {
@@ -98,9 +102,14 @@ def _asset_rows(asset_type):
                     "total": 0,
                     "percent": 0,
                     "is_complete": False,
+                    "photos": 0,
+                    # No inspection yet, so the register link is all there is.
+                    "has_location": bool(asset.google_maps_url),
+                    "map_url": asset.google_maps_url,
                 }
             )
             continue
+
         filled, total = inspection.coverage
         rows.append(
             {
@@ -110,9 +119,34 @@ def _asset_rows(asset_type):
                 "total": total,
                 "percent": inspection.coverage_percent,
                 "is_complete": inspection.is_complete,
+                "photos": inspection.photo_total,
+                **_location_for(asset, inspection),
             }
         )
     return rows
+
+
+def _location_for(asset, inspection):
+    """Where to point the map pin.
+
+    The register link wins when there is one: it is a location somebody
+    chose deliberately, whereas a fix taken under an arch can be a
+    hundred metres out. Observed position fills the gap for assets
+    added on site, which have no register link at all.
+    """
+    if asset.google_maps_url:
+        return {"has_location": True, "map_url": asset.google_maps_url}
+
+    if inspection is not None and inspection.observed_latitude is not None:
+        return {
+            "has_location": True,
+            "map_url": (
+                "https://www.google.com/maps/search/?api=1&query="
+                f"{inspection.observed_latitude},{inspection.observed_longitude}"
+            ),
+        }
+
+    return {"has_location": False, "map_url": ""}
 
 
 def _float_or_none(value):
@@ -364,12 +398,17 @@ def asset_detail(request, structure_code):
         key = section["key"]
         record = saved.get(key)
         filled, total_fields = coverage.get(key, (0, 0))
+        note_fields = [f for f in section["fields"] if f.endswith("notes")]
+        has_notes = any(
+            getattr(data_instance, name, None) for name in note_fields
+        )
         sections.append(
             {
                 "key": key,
                 "label": section["label"],
                 "icon": section["icon"],
                 "photos": section["photos"],
+                "has_notes": has_notes,
                 "filled": filled,
                 "countable": total_fields,
                 "percent": int(filled / total_fields * 100) if total_fields else None,
@@ -470,6 +509,14 @@ def commit_section(request, structure_code, section_key):
     section_filled, section_total = coverage.get(section_key, (0, 0))
     filled, total = inspection.coverage
 
+    # So the hub can update its notes indicator without a page reload.
+    note_fields = [
+        name
+        for name in section_fields(asset.asset_type, section_key)
+        if name.endswith("notes")
+    ]
+    has_notes = any(getattr(inspection.data, name, None) for name in note_fields)
+
     return JsonResponse(
         {
             "ok": True,
@@ -484,6 +531,7 @@ def commit_section(request, structure_code, section_key):
             "percent": int(filled / total * 100) if total else 0,
             "status": inspection.status,
             "saved_at": timezone.localtime().strftime("%H:%M"),
+            "has_notes": has_notes,
             "gps_saved": latitude is not None and longitude is not None,
             "fix_count": inspection.fix_count,
         }
@@ -556,6 +604,8 @@ def asset_report(request, structure_code):
         photos = photos_by_section.get(section["key"], [])
         total_photos += len(photos)
         filled, total_fields = coverage.get(section["key"], (0, 0))
+        note_fields = [f for f in section["fields"] if f.endswith("notes")]
+        has_notes = any(getattr(data, name, None) for name in note_fields)
 
         sections.append(
             {
@@ -564,6 +614,7 @@ def asset_report(request, structure_code):
                 "icon": section["icon"],
                 "rows": rows,
                 "photos": photos,
+                "has_notes": has_notes,
                 "filled": filled,
                 "countable": total_fields,
                 "percent": int(filled / total_fields * 100) if total_fields else None,

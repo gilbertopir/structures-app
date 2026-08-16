@@ -182,8 +182,18 @@
                 <span id="cover-{{ section.key }}">
                     {% if section.countable %}
                         {{ section.filled }}/{{ section.countable }} recorded
+                    {% elif section.has_notes %}
+                        <span class="text-success fw-semibold">
+                            <i class="bi bi-check-circle-fill"></i> Notes added
+                        </span>
                     {% else %}
-                        Notes only
+                        No notes yet
+                    {% endif %}
+                </span>
+                <span class="text-success" id="notesicon-{{ section.key }}"
+                      title="Notes added">
+                    {% if section.countable and section.has_notes %}
+                        · <i class="bi bi-journal-check"></i>
                     {% endif %}
                 </span>
                 <span id="hubphoto-{{ section.key }}">
@@ -631,8 +641,11 @@
             usedThisCycle[key] = 0;
             refreshAddButton(key);
 
+            const cover = document.getElementById('cover-' + key);
+            const notesIcon = document.getElementById('notesicon-' + key);
+
             if (result.section_total) {
-                document.getElementById('cover-' + key).textContent =
+                cover.textContent =
                     result.section_filled + '/' + result.section_total + ' recorded';
                 const bar = document.getElementById('coverbar-' + key);
                 if (bar) {
@@ -640,6 +653,17 @@
                     bar.classList.toggle('full', result.section_percent === 100);
                     bar.classList.toggle('none', result.section_filled === 0);
                 }
+                // Sections with fields show notes as a small icon alongside.
+                notesIcon.innerHTML = result.has_notes
+                    ? ' · <i class="bi bi-journal-check"></i>' : '';
+            } else {
+                // Notes-only sections have nothing to count, so the notes
+                // state is the whole indicator.
+                cover.innerHTML = result.has_notes
+                    ? '<span class="text-success fw-semibold">' +
+                      '<i class="bi bi-check-circle-fill"></i> Notes added</span>'
+                    : 'No notes yet';
+                notesIcon.innerHTML = '';
             }
             document.getElementById('filledCount').textContent = result.filled;
             document.getElementById('progressBar').style.width = result.percent + '%';
