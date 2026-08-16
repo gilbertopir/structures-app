@@ -147,6 +147,10 @@
         </a>
         <div class="d-flex align-items-center gap-2">
             {% if user.is_superuser %}
+            <a href="{% url 'backup_database' %}" class="btn btn-outline-light btn-sm py-1"
+               title="Download database snapshot">
+                <i class="bi bi-database-down"></i>
+            </a>
             <a href="{% url 'admin:index' %}" class="btn btn-outline-light btn-sm py-1"
                title="Django admin">
                 <i class="bi bi-gear"></i>

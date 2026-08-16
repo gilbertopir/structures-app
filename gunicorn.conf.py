@@ -8,8 +8,10 @@ bind = "0.0.0.0:8002"
 # most of the available RAM on idle Django processes.
 workers = 2
 
-# The default 30s is marginal for a photo upload over rural 4G.
-timeout = 120
+# The default 30s is marginal for a photo upload over rural 4G, and a
+# large asset download on a slow office connection can run longer still.
+# Exports stream, so the worker stays busy for the whole transfer.
+timeout = 300
 graceful_timeout = 30
 keepalive = 5
 

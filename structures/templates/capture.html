@@ -118,6 +118,7 @@
     }
     .toast-saved.error { background: #dc3545; }
     .toast-saved.warn  { background: #ffc107; color: #212529; }
+    .toast-saved.neutral { background: #495057; }
 
     .upload-pill {
         position: fixed;
@@ -333,7 +334,7 @@
         <button type="button" class="btn btn-primary w-100"
                 style="background:var(--accent);border-color:var(--accent)"
                 data-commit="{{ section.key }}">
-            <i class="bi bi-cloud-upload me-2"></i>Commit section
+            <i class="bi bi-cloud-upload me-2"></i>Commit &amp; return to sections
         </button>
     </div>
 </div>
@@ -380,10 +381,29 @@
         window.scrollTo(0, 0);
     }
 
+    // Snapshot of a section's values as it was opened, so a commit can
+    // tell 'nothing changed' from 'nothing entered'. Reopening a full
+    // section and changing nothing is genuinely no change, even though
+    // the fields are not empty.
+    const snapshots = {};
+    const photosAdded = {};
+
+    function snapshot(key) {
+        const form = document.querySelector('#panel-' + key + ' form');
+        const values = {};
+        // FormData covers radios, selects and textareas, not just text
+        // inputs — switching Overall condition must register as a change.
+        new FormData(form).forEach((value, name) => {
+            if (name !== 'csrfmiddlewaretoken') values[name] = String(value);
+        });
+        return JSON.stringify(values);
+    }
+
     function showSection(key) {
         hub.style.display = 'none';
         panels.forEach(p => p.style.display = 'none');
         document.getElementById('panel-' + key).style.display = '';
+        if (snapshots[key] === undefined) snapshots[key] = snapshot(key);
         window.scrollTo(0, 0);
     }
 
@@ -543,6 +563,7 @@
             tile.dataset.photoId = result.id;
             tile.querySelector('.remove').dataset.remove = result.id;
             tile.classList.add('done');
+            photosAdded[key] = (photosAdded[key] || 0) + 1;
             updatePhotoCount(key);
         } catch (error) {
             failTile(tile, () => uploadOne(key, file, tile));
@@ -616,6 +637,8 @@
     // ------------------------------------------------------------------
     async function commit(key, button) {
         const form = document.querySelector('#panel-' + key + ' form');
+        const fieldsChanged = snapshot(key) !== snapshots[key];
+        const newPhotos = photosAdded[key] || 0;
         const payload = new FormData(form);
         if (currentFix) {
             payload.append('gps_lat', currentFix.latitude);
@@ -674,10 +697,25 @@
                     ' · ' + result.fix_count + ' recorded';
             }
 
-            showToast(
-                result.gps_saved ? 'Saved with location' : 'Saved to server',
-                'success'
-            );
+            // The commit always runs — it records the visit and a GPS
+            // fix even when nothing was typed. Only the wording changes.
+            snapshots[key] = snapshot(key);
+            photosAdded[key] = 0;
+
+            if (fieldsChanged) {
+                showToast(
+                    result.gps_saved ? 'Saved with location' : 'Saved to server',
+                    'success'
+                );
+            } else if (newPhotos) {
+                showToast(
+                    newPhotos + ' photo' + (newPhotos > 1 ? 's' : '') + ' saved',
+                    'success'
+                );
+            } else {
+                showToast('No changes — section reviewed', 'neutral');
+            }
+
             showHub();
         } catch (error) {
             showToast('Not saved — ' + error.message + '. Try again.', 'error');

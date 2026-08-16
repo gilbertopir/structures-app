@@ -1,12 +1,21 @@
 import json
 import os
+import shutil
 import tempfile
 
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.db.models import Count
-from django.http import FileResponse, JsonResponse
+from django.db import connection
+from django.http import (
+    FileResponse,
+    Http404,
+    HttpResponse,
+    JsonResponse,
+    StreamingHttpResponse,
+)
+from django.conf import settings
 from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -17,7 +26,7 @@ from .exports import (
     _display_value,
     _field_label,
     asset_photo_stats,
-    build_asset_zip,
+    stream_asset_zip,
     build_full_workbook,
 )
 from .forms import build_section_form
@@ -197,6 +206,51 @@ def structure_list(request):
 @login_required
 def culvert_list(request):
     return asset_list(request, "CUL")
+
+
+# ---------------------------------------------------------------------
+# Database snapshot
+# ---------------------------------------------------------------------
+@login_required
+def backup_database(request):
+    """Download a consistent copy of the SQLite database.
+
+    Uses VACUUM INTO rather than copying the file: a plain copy taken
+    while the app is writing can produce a snapshot that looks fine and
+    fails on restore. This runs against the live database safely and
+    the result is already compacted.
+
+    Photos are deliberately not included. They are immutable once
+    uploaded, so an incremental rsync of media/ is far cheaper than
+    re-downloading them all - and it avoids the archive ever getting
+    large enough to need splitting.
+    """
+    if not request.user.is_superuser:
+        raise Http404
+
+    source = settings.DATABASES["default"]["NAME"]
+    if "sqlite" not in settings.DATABASES["default"]["ENGINE"]:
+        return HttpResponse(
+            "Snapshot is only supported for SQLite.", status=400
+        )
+
+    workdir = tempfile.mkdtemp()
+    stamp = timezone.localtime().strftime("%Y-%m-%d_%H%M")
+    filename = f"structures_db_{stamp}.sqlite3"
+    target = os.path.join(workdir, filename)
+
+    # VACUUM INTO refuses to overwrite, so the fresh temp dir matters.
+    with connection.cursor() as cursor:
+        cursor.execute(f"VACUUM INTO '{target}'")
+
+    response = FileResponse(
+        open(target, "rb"),
+        as_attachment=True,
+        filename=filename,
+        content_type="application/vnd.sqlite3",
+    )
+    response._resource_closers.append(lambda: shutil.rmtree(workdir, ignore_errors=True))
+    return response
 
 
 # ---------------------------------------------------------------------
@@ -844,20 +898,25 @@ def export_page(request):
 
 @login_required
 def export_asset(request, structure_code):
-    """Zip of one asset: its photos and its own spreadsheet."""
-    asset = get_object_or_404(Asset, structure_code=structure_code.upper())
-    path = build_asset_zip(asset, CURRENT_VISIT)
+    """Zip of one asset: its photos and its own spreadsheet.
 
-    response = FileResponse(
-        open(path, "rb"),
-        as_attachment=True,
-        filename=f"{asset.structure_code}_{slugify(CURRENT_VISIT)}.zip",
+    Streamed as it is built, so the download starts immediately instead
+    of after the Pi has assembled the whole archive. There is no
+    Content-Length because the size is not known up front - the browser
+    shows an indeterminate progress bar, which is a fair trade for the
+    transfer never timing out.
+    """
+    asset = get_object_or_404(Asset, structure_code=structure_code.upper())
+
+    response = StreamingHttpResponse(
+        stream_asset_zip(asset, CURRENT_VISIT),
         content_type="application/zip",
     )
-    # Delete the temp file once the response has finished streaming.
-    response._resource_closers.append(
-        lambda: os.path.exists(path) and os.unlink(path)
-    )
+    filename = f"{asset.structure_code}_{slugify(CURRENT_VISIT)}.zip"
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    # Stops any proxy buffering the whole archive before passing it on,
+    # which would undo the point of streaming it.
+    response["X-Accel-Buffering"] = "no"
     return response
 
 

@@ -11,9 +11,10 @@ ever approaches the size where it would need splitting into volumes.
 """
 
 import os
-import tempfile
 import zipfile
+from io import BytesIO
 
+from django.utils import timezone
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
@@ -386,25 +387,70 @@ def build_full_workbook(visit):
 # ---------------------------------------------------------------------
 # Per-asset zip
 # ---------------------------------------------------------------------
-def build_asset_zip(asset, visit):
-    """Photos plus the asset's own workbook, written to a temp file.
+class _ZipBuffer:
+    """A write-only sink that hands bytes straight to the response.
 
-    Returns the path; the caller is responsible for deleting it once
-    the response has been sent.
+    zipfile writes into this; the generator below drains it after each
+    write and yields the bytes onward. tell() is required because
+    zipfile records entry offsets, and seekable() returning False makes
+    it emit data descriptors rather than rewinding to patch headers -
+    which is exactly what allows the archive to stream.
+    """
+
+    def __init__(self):
+        self._data = bytearray()
+        self._position = 0
+
+    def write(self, chunk):
+        self._data.extend(chunk)
+        self._position += len(chunk)
+        return len(chunk)
+
+    def tell(self):
+        return self._position
+
+    def flush(self):
+        pass
+
+    def seekable(self):
+        return False
+
+    def take(self):
+        chunk = bytes(self._data)
+        self._data.clear()
+        return chunk
+
+
+def stream_asset_zip(asset, visit, chunk_size=65536):
+    """Yield an asset's zip as it is built, rather than after.
+
+    Building the whole archive first means the Pi sits silent while it
+    works, and Cloudflare drops an origin that has not responded in
+    about 100 seconds. Streaming sends the first bytes immediately, so
+    the download starts at once regardless of how large the asset is,
+    and the Pi never holds the archive in memory or on disk.
+
+    Photos are stored rather than deflated: JPEGs are already
+    compressed, so deflating them costs Pi CPU for almost no saving.
+    The spreadsheet is deflated, where it does help.
     """
     inspection = _inspection_for(asset, visit)
     photos = list(inspection.photos.all()) if inspection else []
+    code = asset.structure_code
 
-    handle = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
-    handle.close()
-
-    with zipfile.ZipFile(handle.name, "w", zipfile.ZIP_DEFLATED) as archive:
+    buffer = _ZipBuffer()
+    with zipfile.ZipFile(
+        buffer, "w", zipfile.ZIP_STORED, allowZip64=True
+    ) as archive:
         workbook = build_asset_workbook(asset, visit)
-        excel_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
-        excel_temp.close()
-        workbook.save(excel_temp.name)
-        archive.write(excel_temp.name, f"{asset.structure_code}/{asset.structure_code}.xlsx")
-        os.unlink(excel_temp.name)
+        workbook_bytes = BytesIO()
+        workbook.save(workbook_bytes)
+
+        info = zipfile.ZipInfo(f"{code}/{code}.xlsx")
+        info.compress_type = zipfile.ZIP_DEFLATED
+        info.date_time = timezone.localtime().timetuple()[:6]
+        archive.writestr(info, workbook_bytes.getvalue())
+        yield buffer.take()
 
         for photo in photos:
             if not photo.photo:
@@ -415,13 +461,25 @@ def build_asset_zip(asset, visit):
                 continue
             if not os.path.isfile(source):
                 continue
-            archive.write(
-                source,
-                f"{asset.structure_code}/{photo.section_key}/"
-                f"{os.path.basename(photo.photo.name)}",
-            )
 
-    return handle.name
+            arcname = (
+                f"{code}/{photo.section_key}/{os.path.basename(photo.photo.name)}"
+            )
+            with archive.open(arcname, "w") as target, open(source, "rb") as handle:
+                while True:
+                    chunk = handle.read(chunk_size)
+                    if not chunk:
+                        break
+                    target.write(chunk)
+                    data = buffer.take()
+                    if data:
+                        yield data
+            data = buffer.take()
+            if data:
+                yield data
+
+    # Central directory, written when the archive closes.
+    yield buffer.take()
 
 
 def asset_photo_stats(asset, visit):

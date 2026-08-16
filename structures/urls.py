@@ -43,6 +43,7 @@ urlpatterns = [
         views.asset_report,
         name="asset_report",
     ),
+    path("backup/database/", views.backup_database, name="backup_database"),
     path("export/", views.export_page, name="export_page"),
     path("export/all.xlsx", views.export_full_excel, name="export_full_excel"),
     path(
