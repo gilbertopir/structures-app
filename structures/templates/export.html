@@ -6,6 +6,28 @@
 {% block theme_colour %}#495057{% endblock %}
 {% block nav_export %}active{% endblock %}
 
+{% block extra_css %}
+<style>
+    /* Same visual language as the coverage bars on the capture hub, so a
+       bar means the same thing wherever it appears. */
+    .cover-bar {
+        height: 4px;
+        background: #e9ecef;
+        border-radius: 2px;
+        margin-top: 6px;
+        overflow: hidden;
+    }
+    .cover-bar span {
+        display: block;
+        height: 100%;
+        background: #198754;
+    }
+    .asset-card.has-data { border-left-width: 5px; }
+    .asset-card.no-data { opacity: 0.72; }
+    .route.with-data { color: #198754; font-weight: 600; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="page-header">
     <h5><i class="bi bi-download me-2"></i>Export</h5>
@@ -52,33 +74,54 @@
     Each download is a zip holding that asset's photos and its own spreadsheet.
 </p>
 
-<div class="mb-3">
+<div class="mb-2">
     <input type="search" id="assetFilter" class="form-control"
            placeholder="Filter by code, route or type…" autocomplete="off">
 </div>
 
+<div class="form-check form-switch mb-3 ms-1">
+    <input class="form-check-input" type="checkbox" id="withDataOnly">
+    <label class="form-check-label small" for="withDataOnly">
+        Show only assets with data
+    </label>
+</div>
+
 <div id="assetList">
     {% for row in rows %}
-    <div class="asset-card"
+    <div class="asset-card {% if row.has_data %}has-data{% else %}no-data{% endif %}"
          style="border-left-color: {% if row.asset.asset_type == 'STR' %}#0d6efd{% else %}#0d9488{% endif %}"
+         data-has-data="{{ row.has_data|yesno:'1,0' }}"
          data-search="{{ row.asset.structure_code|lower }} {{ row.asset.type_details|lower }} {{ row.asset.route_new|lower }} {{ row.asset.route_old|lower }}">
         <div class="d-flex justify-content-between align-items-center">
-            <div class="pe-2">
-                <div class="code">{{ row.asset.structure_code }}</div>
+            <div class="pe-2 flex-grow-1">
+                <div class="code">
+                    {{ row.asset.structure_code }}
+                    {% if row.asset.is_user_created %}
+                    <span class="badge text-bg-light text-muted"
+                          style="font-size:0.6rem;vertical-align:middle">SITE</span>
+                    {% endif %}
+                </div>
                 <div class="details">{{ row.asset.type_details|default:"—" }}</div>
-                <div class="route">
+                <div class="route {% if row.has_data %}with-data{% endif %}">
                     {% if row.has_data %}
-                        {{ row.percent }}% recorded ·
-                        {{ row.photo_count }} photo{{ row.photo_count|pluralize }} ·
-                        {{ row.size_display }}
+                        {{ row.percent }}% recorded
+                        {% if row.photo_count %}
+                            · <i class="bi bi-camera"></i> {{ row.photo_count }}
+                        {% endif %}
+                        · {{ row.size_display }}
                     {% else %}
                         No data recorded
                     {% endif %}
                 </div>
+                {% if row.has_data %}
+                <div class="cover-bar">
+                    <span style="width: {{ row.percent }}%"></span>
+                </div>
+                {% endif %}
             </div>
-            <div class="flex-shrink-0">
+            <div class="flex-shrink-0 ps-2">
                 <a href="{% url 'export_asset' row.asset.structure_code %}"
-                   class="btn btn-sm {% if row.has_data %}btn-outline-dark{% else %}btn-outline-secondary{% endif %}">
+                   class="btn btn-sm {% if row.has_data %}btn-success{% else %}btn-outline-secondary{% endif %}">
                     <i class="bi bi-file-earmark-zip"></i>
                 </a>
             </div>
@@ -101,16 +144,24 @@
     const cards = Array.from(document.querySelectorAll('#assetList .asset-card'));
     const noMatch = document.getElementById('noMatch');
 
-    input.addEventListener('input', function () {
-        const term = this.value.trim().toLowerCase();
+    const withDataOnly = document.getElementById('withDataOnly');
+
+    function apply() {
+        const term = input.value.trim().toLowerCase();
+        const onlyData = withDataOnly.checked;
         let visible = 0;
         cards.forEach(card => {
-            const hit = !term || card.dataset.search.includes(term);
+            const matchesTerm = !term || card.dataset.search.includes(term);
+            const matchesData = !onlyData || card.dataset.hasData === '1';
+            const hit = matchesTerm && matchesData;
             card.style.display = hit ? '' : 'none';
             if (hit) visible++;
         });
         noMatch.style.display = visible === 0 ? '' : 'none';
-    });
+    }
+
+    input.addEventListener('input', apply);
+    withDataOnly.addEventListener('change', apply);
 })();
 </script>
 {% endblock %}

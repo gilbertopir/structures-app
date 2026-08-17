@@ -387,6 +387,10 @@
     // the fields are not empty.
     const snapshots = {};
     const photosAdded = {};
+    // Deleting a photo changes neither the form values nor the upload
+    // count, so without this a deletion would commit and report
+    // "no changes" - the one case where a wrong message is alarming.
+    const photosRemoved = {};
 
     function snapshot(key) {
         const form = document.querySelector('#panel-' + key + ' form');
@@ -624,6 +628,7 @@
                 const result = await response.json();
                 if (!response.ok || !result.ok) throw new Error(result.error || 'Delete failed');
                 tile.remove();
+                photosRemoved[key] = (photosRemoved[key] || 0) + 1;
                 updatePhotoCount(key);
                 showToast('Photo deleted', 'success');
             } catch (error) {
@@ -639,6 +644,7 @@
         const form = document.querySelector('#panel-' + key + ' form');
         const fieldsChanged = snapshot(key) !== snapshots[key];
         const newPhotos = photosAdded[key] || 0;
+        const gonePhotos = photosRemoved[key] || 0;
         const payload = new FormData(form);
         if (currentFix) {
             payload.append('gps_lat', currentFix.latitude);
@@ -701,17 +707,27 @@
             // fix even when nothing was typed. Only the wording changes.
             snapshots[key] = snapshot(key);
             photosAdded[key] = 0;
+            photosRemoved[key] = 0;
+
+            function plural(count, word) {
+                return count + ' ' + word + (count > 1 ? 's' : '');
+            }
 
             if (fieldsChanged) {
                 showToast(
                     result.gps_saved ? 'Saved with location' : 'Saved to server',
                     'success'
                 );
-            } else if (newPhotos) {
+            } else if (newPhotos && gonePhotos) {
                 showToast(
-                    newPhotos + ' photo' + (newPhotos > 1 ? 's' : '') + ' saved',
+                    plural(newPhotos, 'photo') + ' added, ' +
+                    gonePhotos + ' removed',
                     'success'
                 );
+            } else if (newPhotos) {
+                showToast(plural(newPhotos, 'photo') + ' saved', 'success');
+            } else if (gonePhotos) {
+                showToast(plural(gonePhotos, 'photo') + ' removed', 'success');
             } else {
                 showToast('No changes — section reviewed', 'neutral');
             }
