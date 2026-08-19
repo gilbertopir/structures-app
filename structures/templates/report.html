@@ -82,9 +82,10 @@
                 · Batch {{ asset.batch|default:"—" }}
             </div>
         </div>
-        {% if asset.google_maps_url %}
-        <a href="{{ asset.google_maps_url }}" target="_blank" rel="noopener"
-           class="btn btn-sm btn-outline-light">
+        {% if map_url %}
+        <a href="{{ map_url }}" target="_blank" rel="noopener"
+           class="btn btn-sm btn-outline-light"
+           title="{% if map_source == 'observed' %}Observed position from GPS{% else %}Position from the asset register{% endif %}">
             <i class="bi bi-geo-alt-fill"></i>
         </a>
         {% endif %}

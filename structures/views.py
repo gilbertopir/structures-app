@@ -136,26 +136,9 @@ def _asset_rows(asset_type):
 
 
 def _location_for(asset, inspection):
-    """Where to point the map pin.
-
-    The register link wins when there is one: it is a location somebody
-    chose deliberately, whereas a fix taken under an arch can be a
-    hundred metres out. Observed position fills the gap for assets
-    added on site, which have no register link at all.
-    """
-    if asset.google_maps_url:
-        return {"has_location": True, "map_url": asset.google_maps_url}
-
-    if inspection is not None and inspection.observed_latitude is not None:
-        return {
-            "has_location": True,
-            "map_url": (
-                "https://www.google.com/maps/search/?api=1&query="
-                f"{inspection.observed_latitude},{inspection.observed_longitude}"
-            ),
-        }
-
-    return {"has_location": False, "map_url": ""}
+    """Where to point the map pin. Precedence lives on the model."""
+    url = asset.map_link(inspection)
+    return {"has_location": bool(url), "map_url": url}
 
 
 def _float_or_none(value):
@@ -487,6 +470,8 @@ def asset_detail(request, structure_code):
         "percent": inspection.coverage_percent,
         "observed_fix": fix,
         "fix_count": inspection.fix_count,
+        "map_url": asset.map_link(inspection),
+        "map_source": asset.map_link_source(inspection),
         **ACCENTS.get(asset.asset_type, ACCENTS["STR"]),
     }
     return render(request, "capture.html", context)
@@ -687,6 +672,8 @@ def asset_report(request, structure_code):
         "percent": inspection.coverage_percent if inspection else 0,
         "observed_fix": inspection.observed_fix if inspection else None,
         "fix_count": inspection.fix_count if inspection else 0,
+        "map_url": asset.map_link(inspection),
+        "map_source": asset.map_link_source(inspection),
         "total_photos": total_photos,
         "visit": CURRENT_VISIT,
         **ACCENTS.get(asset.asset_type, ACCENTS["STR"]),

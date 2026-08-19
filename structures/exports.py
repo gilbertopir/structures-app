@@ -165,7 +165,7 @@ def build_asset_workbook(asset, visit):
             else "",
         ),
         ("GPS fixes recorded", inspection.fix_count if inspection else 0),
-        ("Google Maps", asset.google_maps_url),
+        ("Map link source", asset.map_link_source(inspection) or "none"),
         ("Photo links", "Extract the zip first, then photo names open on click"),
         (
             "Last updated",
@@ -177,6 +177,14 @@ def build_asset_workbook(asset, visit):
     for label, value in meta_rows:
         worksheet.cell(row=row, column=1, value=label).font = SECTION_FONT
         worksheet.cell(row=row, column=2, value=value)
+        row += 1
+
+    map_url = asset.map_link(inspection)
+    if map_url:
+        worksheet.cell(row=row, column=1, value="Map link").font = SECTION_FONT
+        cell = worksheet.cell(row=row, column=2, value="Open in Google Maps")
+        cell.hyperlink = map_url
+        cell.font = LINK_FONT
         row += 1
 
     row += 1
@@ -264,7 +272,7 @@ def build_full_workbook(visit):
         "Old route", "Status", "Complete", "Fields recorded", "Fields total",
         "Coverage %", "Photos", "Register latitude", "Register longitude",
         "Observed latitude", "Observed longitude", "Observed accuracy (m)",
-        "GPS fixes", "Last updated", "Updated by",
+        "GPS fixes", "Map link", "Link source", "Last updated", "Updated by",
     ]
     summary.append(summary_headers)
     for index in range(1, len(summary_headers) + 1):
@@ -283,6 +291,7 @@ def build_full_workbook(visit):
             "Status", "Complete", "Coverage %", "Source",
             "Register latitude", "Register longitude",
             "Observed latitude", "Observed longitude", "Observed accuracy (m)",
+            "Map link", "Link source",
         ]
         field_headers = []
         field_names = []
@@ -346,6 +355,8 @@ def build_full_workbook(visit):
                 round(inspection.observed_accuracy)
                 if inspection and inspection.observed_accuracy is not None
                 else "",
+                asset.map_link(inspection),
+                asset.map_link_source(inspection) or "none",
             ]
 
             for field_name in field_names:
@@ -391,6 +402,8 @@ def build_full_workbook(visit):
                     if inspection and inspection.observed_accuracy is not None
                     else "",
                     inspection.fix_count if inspection else 0,
+                    asset.map_link(inspection),
+                    asset.map_link_source(inspection) or "none",
                     inspection.updated_at.strftime("%d/%m/%Y %H:%M")
                     if inspection
                     else "",

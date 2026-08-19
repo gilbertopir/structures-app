@@ -170,6 +170,31 @@ class Asset(models.Model):
                 numbers.append(int(match.group(1)))
         return f"{route_new}-{prefix}{(max(numbers) + 1) if numbers else 1:02d}"
 
+    def map_link(self, inspection=None):
+        """Best available map URL for this asset, or ''.
+
+        The register link wins where there is one: somebody chose that
+        location deliberately, whereas a fix taken under an arch can be
+        a hundred metres out. Observed GPS fills the gap for assets
+        added on site, which have no register link at all.
+        """
+        if self.google_maps_url:
+            return self.google_maps_url
+        if inspection is not None and inspection.observed_latitude is not None:
+            return (
+                "https://www.google.com/maps/search/?api=1&query="
+                f"{inspection.observed_latitude},{inspection.observed_longitude}"
+            )
+        return ""
+
+    def map_link_source(self, inspection=None):
+        """'register', 'observed' or '' — so exports can label honestly."""
+        if self.google_maps_url:
+            return "register"
+        if inspection is not None and inspection.observed_latitude is not None:
+            return "observed"
+        return ""
+
     @property
     def has_captured_data(self):
         """True once anything has been recorded against this asset."""

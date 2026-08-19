@@ -33,8 +33,15 @@
     </div>
 </div>
 
+<div class="mb-3">
+    <input type="search" id="assetFilter" class="form-control"
+           placeholder="Filter by code, route or type…" autocomplete="off">
+</div>
+
+<div id="assetList">
 {% for row in rows %}
 <a href="{% url 'asset_report' row.asset.structure_code %}" class="asset-card"
+   data-search="{{ row.asset.structure_code|lower }} {{ row.asset.type_details|lower }} {{ row.asset.route_new|lower }} {{ row.asset.route_old|lower }}"
    style="border-left-color: {% if row.asset.asset_type == 'STR' %}#0d6efd{% else %}#0d9488{% endif %}">
     <div class="d-flex justify-content-between align-items-start">
         <div class="pe-2">
@@ -64,4 +71,30 @@
     <p class="small">Assets appear here once an inspection has been started.</p>
 </div>
 {% endfor %}
+</div>
+
+<p class="text-center text-muted small mt-3" id="noMatch" style="display:none">
+    No assets match that filter.
+</p>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    const input = document.getElementById('assetFilter');
+    const cards = Array.from(document.querySelectorAll('#assetList .asset-card'));
+    const noMatch = document.getElementById('noMatch');
+
+    input.addEventListener('input', function () {
+        const term = this.value.trim().toLowerCase();
+        let visible = 0;
+        cards.forEach(card => {
+            const hit = !term || card.dataset.search.includes(term);
+            card.style.display = hit ? '' : 'none';
+            if (hit) visible++;
+        });
+        noMatch.style.display = visible === 0 ? '' : 'none';
+    });
+})();
+</script>
 {% endblock %}
