@@ -27,11 +27,39 @@ HEADER_FILL_CUL = PatternFill("solid", fgColor="0D9488")
 HEADER_FONT = Font(bold=True, color="FFFFFF")
 SECTION_FILL = PatternFill("solid", fgColor="E9ECEF")
 SECTION_FONT = Font(bold=True)
+LINK_FONT = Font(color="0563C1", underline="single")
 
 
 # ---------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------
+def export_photo_name(asset, photo):
+    """Filename used for a photo inside an export.
+
+    Prefixed with the asset code and section so a photo dragged out of
+    the folder into an email still says what it is. Also guarantees
+    uniqueness: the same source filename can legitimately appear in two
+    sections, and a flat listing would otherwise collide.
+
+    Both the zip and the workbook call this. If they built the name
+    separately they would drift, and a spreadsheet pointing at files
+    that do not exist is worse than one with no links at all.
+    """
+    base = os.path.basename(photo.photo.name)
+    return f"{asset.structure_code}_{photo.section_key}_{base}"
+
+
+def export_photo_relpath(asset, photo):
+    """Path of a photo relative to the workbook inside the zip.
+
+    The workbook sits at <code>/<code>.xlsx and photos at
+    <code>/<section>/<name>, so a link relative to the workbook is
+    simply <section>/<name>. Excel resolves it once the zip is
+    extracted.
+    """
+    return f"{photo.section_key}/{export_photo_name(asset, photo)}"
+
+
 def _field_label(model, field_name):
     """Human label for a model field, falling back to the name."""
     try:
@@ -138,6 +166,7 @@ def build_asset_workbook(asset, visit):
         ),
         ("GPS fixes recorded", inspection.fix_count if inspection else 0),
         ("Google Maps", asset.google_maps_url),
+        ("Photo links", "Extract the zip first, then photo names open on click"),
         (
             "Last updated",
             inspection.updated_at.strftime("%d/%m/%Y %H:%M") if inspection else "",
@@ -197,15 +226,19 @@ def build_asset_workbook(asset, visit):
         )
         if photos:
             worksheet.cell(row=row, column=1, value="Photos").font = SECTION_FONT
-            cell = worksheet.cell(
-                row=row,
-                column=2,
-                value="\n".join(os.path.basename(p.photo.name) for p in photos),
-            )
-            cell.alignment = Alignment(wrap_text=True, vertical="top")
             worksheet.cell(row=row, column=3, value=f"{len(photos)} photo(s)")
-            worksheet.row_dimensions[row].height = 14 * max(len(photos), 1)
-            row += 1
+
+            # One row per photo so each can carry its own hyperlink -
+            # a cell can only hold one link, so stacking the names in a
+            # single cell would leave all but the first unclickable.
+            for photo in photos:
+                cell = worksheet.cell(
+                    row=row, column=2, value=export_photo_name(asset, photo)
+                )
+                cell.hyperlink = export_photo_relpath(asset, photo)
+                cell.font = LINK_FONT
+                row += 1
+            row += 0
 
         row += 1
 
@@ -319,7 +352,7 @@ def build_full_workbook(visit):
                 if isinstance(field_name, tuple):
                     key = field_name[1]
                     names = [
-                        os.path.basename(p.photo.name)
+                        export_photo_name(asset, p)
                         for p in photos
                         if p.section_key == key
                     ]
@@ -462,9 +495,7 @@ def stream_asset_zip(asset, visit, chunk_size=65536):
             if not os.path.isfile(source):
                 continue
 
-            arcname = (
-                f"{code}/{photo.section_key}/{os.path.basename(photo.photo.name)}"
-            )
+            arcname = f"{code}/{export_photo_relpath(asset, photo)}"
             with archive.open(arcname, "w") as target, open(source, "rb") as handle:
                 while True:
                     chunk = handle.read(chunk_size)
