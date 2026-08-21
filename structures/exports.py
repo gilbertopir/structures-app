@@ -15,6 +15,7 @@ import zipfile
 from io import BytesIO
 
 from django.utils import timezone
+from django.utils.text import slugify
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
@@ -50,14 +51,14 @@ def export_photo_name(asset, photo):
 
 
 def export_photo_relpath(asset, photo):
-    """Path of a photo relative to the workbook inside the zip.
+    """Photo path relative to the asset folder.
 
-    The workbook sits at <code>/<code>.xlsx and photos at
-    <code>/<section>/<name>, so a link relative to the workbook is
-    simply <section>/<name>. Excel resolves it once the zip is
-    extracted.
+    Flat rather than nested by section: the section is already in the
+    filename, so subfolders holding one or two photos each would be
+    navigation cost for nothing. Files still sort by section within the
+    folder, because the prefix comes before the original name.
     """
-    return f"{photo.section_key}/{export_photo_name(asset, photo)}"
+    return export_photo_name(asset, photo)
 
 
 def _field_label(model, field_name):
@@ -100,11 +101,25 @@ def _inspection_for(asset, visit):
 # ---------------------------------------------------------------------
 # Per-asset workbook
 # ---------------------------------------------------------------------
-def build_asset_workbook(asset, visit):
-    """One asset laid out vertically: section heading, then field rows.
+def build_asset_workbook(asset, visit, photo_prefix=""):
+    """Single-asset workbook. Thin wrapper around the shared writer."""
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = asset.structure_code[:31]
+    _write_asset_sheet(worksheet, asset, visit, photo_prefix=photo_prefix)
+    return workbook
+
+
+def _write_asset_sheet(worksheet, asset, visit, photo_prefix=""):
+    """Lay one asset out down a sheet: heading, then field rows.
 
     Vertical rather than a single wide row because this is read by a
-    person looking at one structure, not filtered across thirty.
+    person looking at one structure, not filtered across forty.
+
+    photo_prefix is what sits in front of the relative photo link. Empty
+    for the single-asset zip, where the workbook sits beside its own
+    photos; 'photos/<code>' for the expanded export, where one shared
+    tree serves every workbook. Both resolve on extraction.
     """
     inspection = _inspection_for(asset, visit)
     data = inspection.data if inspection else None
@@ -115,10 +130,6 @@ def build_asset_workbook(asset, visit):
         if inspection
         else {}
     )
-
-    workbook = Workbook()
-    worksheet = workbook.active
-    worksheet.title = asset.structure_code[:31]
 
     fill = HEADER_FILL if asset.asset_type == "STR" else HEADER_FILL_CUL
 
@@ -243,7 +254,11 @@ def build_asset_workbook(asset, visit):
                 cell = worksheet.cell(
                     row=row, column=2, value=export_photo_name(asset, photo)
                 )
-                cell.hyperlink = export_photo_relpath(asset, photo)
+                cell.hyperlink = (
+                    f"{photo_prefix}/{export_photo_relpath(asset, photo)}"
+                    if photo_prefix
+                    else export_photo_relpath(asset, photo)
+                )
                 cell.font = LINK_FONT
                 row += 1
             row += 0
@@ -251,7 +266,6 @@ def build_asset_workbook(asset, visit):
         row += 1
 
     _autosize(worksheet)
-    return workbook
 
 
 # ---------------------------------------------------------------------
@@ -268,12 +282,18 @@ def build_full_workbook(visit):
 
     summary = workbook.create_sheet("Summary")
     summary_headers = [
-        "Structure code", "Type", "Type details", "Batch", "New route",
+        "Structure code", "Photos folder", "Type", "Type details", "Batch",
+        "New route",
         "Old route", "Status", "Complete", "Fields recorded", "Fields total",
         "Coverage %", "Photos", "Register latitude", "Register longitude",
         "Observed latitude", "Observed longitude", "Observed accuracy (m)",
         "GPS fixes", "Map link", "Link source", "Last updated", "Updated by",
     ]
+    # A cell can only hold one hyperlink, so a column per photo would be
+    # set by the busiest asset and mostly empty. One link to the asset's
+    # folder sidesteps that, and matches the actual use: from Summary you
+    # are scanning across assets, and the natural next step is "show me
+    # this one's photos" rather than "open photo three".
     summary.append(summary_headers)
     for index in range(1, len(summary_headers) + 1):
         cell = summary.cell(row=1, column=index)
@@ -287,7 +307,8 @@ def build_full_workbook(visit):
         )
 
         base_headers = [
-            "Structure code", "Type details", "Batch", "New route", "Old route",
+            "Structure code", "Photos folder", "Type details", "Batch",
+            "New route", "Old route",
             "Status", "Complete", "Coverage %", "Source",
             "Register latitude", "Register longitude",
             "Observed latitude", "Observed longitude", "Observed accuracy (m)",
@@ -327,15 +348,17 @@ def build_full_workbook(visit):
             cell.fill = fill
             cell.font = HEADER_FONT
             cell.alignment = Alignment(wrap_text=True, vertical="top")
-        sheet.freeze_panes = "B2"
+        sheet.freeze_panes = "C2"
 
         for asset in assets:
             inspection = _inspection_for(asset, visit)
             data = inspection.data if inspection else None
             photos = list(inspection.photos.all()) if inspection else []
 
+            sheet_row = sheet.max_row + 1
             row = [
                 asset.structure_code,
+                f"Open folder ({len(photos)})" if photos else "—",
                 asset.type_details,
                 asset.batch,
                 asset.route_new,
@@ -376,9 +399,16 @@ def build_full_workbook(visit):
 
             sheet.append(row)
 
+            if photos:
+                cell = sheet.cell(row=sheet_row, column=2)
+                cell.hyperlink = f"photos/{asset.structure_code}/"
+                cell.font = LINK_FONT
+
+            summary_row = summary.max_row + 1
             summary.append(
                 [
                     asset.structure_code,
+                    f"Open folder ({len(photos)})" if photos else "—",
                     asset.asset_type,
                     asset.type_details,
                     asset.batch,
@@ -413,6 +443,11 @@ def build_full_workbook(visit):
                 ]
             )
 
+            if photos:
+                cell = summary.cell(row=summary_row, column=2)
+                cell.hyperlink = f"photos/{asset.structure_code}/"
+                cell.font = LINK_FONT
+
         _autosize(sheet, max_width=28)
 
         # Filenames are long and there may be several per cell, so these
@@ -426,7 +461,7 @@ def build_full_workbook(visit):
                 )
 
     _autosize(summary)
-    summary.freeze_panes = "A2"
+    summary.freeze_panes = "C2"
     return workbook
 
 
@@ -508,7 +543,7 @@ def stream_asset_zip(asset, visit, chunk_size=65536):
             if not os.path.isfile(source):
                 continue
 
-            arcname = f"{code}/{export_photo_relpath(asset, photo)}"
+            arcname = f"{code}/{export_photo_name(asset, photo)}"
             with archive.open(arcname, "w") as target, open(source, "rb") as handle:
                 while True:
                     chunk = handle.read(chunk_size)
@@ -543,3 +578,176 @@ def asset_photo_stats(asset, visit):
         except Exception:
             pass
     return count, total
+
+# ---------------------------------------------------------------------
+# Expanded export: one workbook per asset type, tab per asset
+# ---------------------------------------------------------------------
+def _asset_sheet_name(asset):
+    """Sheet names cap at 31 characters; asset codes are well under."""
+    return asset.structure_code[:31]
+
+
+def build_by_asset_workbook(asset_type, visit, photo_prefix="photos"):
+    """One tab per asset, laid out like the single-asset workbook.
+
+    An index sheet comes first: forty tabs is more than anyone wants to
+    page through, and Excel gives no overview of its own. Photo links
+    are relative to the workbook sitting beside a photos/ folder, so
+    they resolve once the zip is extracted.
+    """
+    assets = list(
+        Asset.objects.filter(asset_type=asset_type, is_active=True).order_by(
+            "structure_code"
+        )
+    )
+
+    workbook = Workbook()
+    workbook.remove(workbook.active)
+
+    index = workbook.create_sheet("Index")
+    index_headers = [
+        "Structure code", "Type details", "Route", "Batch", "Status",
+        "Complete", "Coverage %", "Photos", "Source",
+    ]
+    index.append(index_headers)
+    fill = HEADER_FILL if asset_type == "STR" else HEADER_FILL_CUL
+    for column in range(1, len(index_headers) + 1):
+        cell = index.cell(row=1, column=column)
+        cell.fill = fill
+        cell.font = HEADER_FONT
+    index.freeze_panes = "A2"
+
+    index_row = 2
+    for asset in assets:
+        inspection = _inspection_for(asset, visit)
+        photos = list(inspection.photos.all()) if inspection else []
+        sheet_name = _asset_sheet_name(asset)
+
+        sheet = workbook.create_sheet(sheet_name)
+        _write_asset_sheet(
+            sheet,
+            asset,
+            visit,
+            photo_prefix=f"{photo_prefix}/{asset.structure_code}",
+        )
+
+        link = index.cell(row=index_row, column=1, value=asset.structure_code)
+        link.hyperlink = f"#'{sheet_name}'!A1"
+        link.font = LINK_FONT
+
+        index.cell(row=index_row, column=2, value=asset.type_details)
+        index.cell(row=index_row, column=3, value=asset.route_new)
+        index.cell(row=index_row, column=4, value=asset.batch)
+        index.cell(
+            row=index_row,
+            column=5,
+            value=inspection.get_status_display() if inspection else "Not started",
+        )
+        index.cell(
+            row=index_row,
+            column=6,
+            value="Yes" if inspection and inspection.is_complete else "No",
+        )
+        index.cell(
+            row=index_row,
+            column=7,
+            value=inspection.coverage_percent if inspection else 0,
+        )
+        index.cell(row=index_row, column=8, value=len(photos))
+        index.cell(
+            row=index_row,
+            column=9,
+            value="Site" if asset.is_user_created else "Register",
+        )
+        index_row += 1
+
+    _autosize(index)
+    return workbook
+
+
+def stream_full_export(visit, chunk_size=65536):
+    """Everything in one archive: three workbooks and one photo tree.
+
+    Downloading forty assets one at a time and reassembling them by
+    hand is the kind of task that quietly stops being done properly.
+    This produces the same content in a single extract-once archive.
+
+    The workbooks are built up front - they need every asset before the
+    first byte can be written - so expect a pause before the download
+    starts, unlike the single-asset export which streams immediately.
+    """
+    buffer = _ZipBuffer()
+    root = f"structures_survey_{slugify(visit)}"
+
+    with zipfile.ZipFile(
+        buffer, "w", zipfile.ZIP_STORED, allowZip64=True
+    ) as archive:
+
+        def add_workbook(name, workbook):
+            payload = BytesIO()
+            workbook.save(payload)
+            info = zipfile.ZipInfo(f"{root}/{name}")
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.date_time = timezone.localtime().timetuple()[:6]
+            archive.writestr(info, payload.getvalue())
+
+        add_workbook("00_summary.xlsx", build_full_workbook(visit))
+        yield buffer.take()
+
+        add_workbook(
+            "01_structures_by_asset.xlsx", build_by_asset_workbook("STR", visit)
+        )
+        yield buffer.take()
+
+        add_workbook(
+            "02_culverts_by_asset.xlsx", build_by_asset_workbook("CUL", visit)
+        )
+        yield buffer.take()
+
+        for asset in Asset.objects.filter(is_active=True).order_by("structure_code"):
+            inspection = _inspection_for(asset, visit)
+            if inspection is None:
+                continue
+
+            for photo in inspection.photos.all():
+                if not photo.photo:
+                    continue
+                try:
+                    source = photo.photo.path
+                except Exception:
+                    continue
+                if not os.path.isfile(source):
+                    continue
+
+                arcname = (
+                    f"{root}/photos/{asset.structure_code}/"
+                    f"{export_photo_name(asset, photo)}"
+                )
+                with archive.open(arcname, "w") as target, open(
+                    source, "rb"
+                ) as handle:
+                    while True:
+                        chunk = handle.read(chunk_size)
+                        if not chunk:
+                            break
+                        target.write(chunk)
+                        data = buffer.take()
+                        if data:
+                            yield data
+                data = buffer.take()
+                if data:
+                    yield data
+
+    yield buffer.take()
+
+
+def full_export_stats(visit):
+    """(photo_count, total_bytes) so the page can label the button."""
+    count = 0
+    total = 0
+    for asset in Asset.objects.filter(is_active=True):
+        asset_count, asset_bytes = asset_photo_stats(asset, visit)
+        count += asset_count
+        total += asset_bytes
+    return count, total
+

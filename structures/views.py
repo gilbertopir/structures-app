@@ -26,7 +26,9 @@ from .exports import (
     _display_value,
     _field_label,
     asset_photo_stats,
+    full_export_stats,
     stream_asset_zip,
+    stream_full_export,
     build_full_workbook,
 )
 from .forms import build_section_form
@@ -879,6 +881,8 @@ def export_page(request):
         "started_count": started,
         "photo_total": photo_total,
         "size_total": _human_size(size_total),
+        "str_total": sum(1 for r in rows if r["asset"].asset_type == "STR"),
+        "cul_total": sum(1 for r in rows if r["asset"].asset_type == "CUL"),
     }
     return render(request, "export.html", context)
 
@@ -903,6 +907,24 @@ def export_asset(request, structure_code):
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
     # Stops any proxy buffering the whole archive before passing it on,
     # which would undo the point of streaming it.
+    response["X-Accel-Buffering"] = "no"
+    return response
+
+
+@login_required
+def export_full_zip(request):
+    """Everything in one archive: three workbooks and one photo tree.
+
+    Exists because downloading forty assets individually and
+    reassembling them by hand is the kind of task that quietly stops
+    being done properly.
+    """
+    response = StreamingHttpResponse(
+        stream_full_export(CURRENT_VISIT),
+        content_type="application/zip",
+    )
+    filename = f"structures_survey_{slugify(CURRENT_VISIT)}.zip"
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
     response["X-Accel-Buffering"] = "no"
     return response
 

@@ -46,6 +46,7 @@ urlpatterns = [
     path("backup/database/", views.backup_database, name="backup_database"),
     path("export/", views.export_page, name="export_page"),
     path("export/all.xlsx", views.export_full_excel, name="export_full_excel"),
+    path("export/all.zip", views.export_full_zip, name="export_full_zip"),
     path(
         "export/asset/<str:structure_code>.zip",
         views.export_asset,

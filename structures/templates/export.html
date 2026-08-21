@@ -34,19 +34,30 @@
     <small>{{ visit }} — per asset, or the full database</small>
 </div>
 
-<div class="metric-card">
+<div class="metric-card" style="border-left: 4px solid #198754">
     <div class="d-flex justify-content-between align-items-center">
-        <div>
-            <div class="metric-label">Full database</div>
+        <div class="pe-2">
+            <div class="metric-label">Everything (expanded)</div>
             <div class="small text-muted">
-                All {{ total_assets }} assets · Summary, Structures and Culverts sheets
+                All three workbooks plus every photo, in one archive.
+                {{ photo_total }} photo{{ photo_total|pluralize }} · {{ size_total }}
             </div>
         </div>
-        <a href="{% url 'export_full_excel' %}" class="btn btn-success">
-            <i class="bi bi-file-earmark-excel me-1"></i>Excel
+        <a href="{% url 'export_full_zip' %}" class="btn btn-success flex-shrink-0">
+            <i class="bi bi-file-earmark-zip me-1"></i>Download
         </a>
     </div>
+    <div class="small text-muted mt-2">
+        <code>00_summary.xlsx</code> ·
+        <code>01_structures_by_asset.xlsx</code> ({{ str_total }} tabs) ·
+        <code>02_culverts_by_asset.xlsx</code> ({{ cul_total }} tabs) ·
+        <code>photos/&lt;asset&gt;/</code>
+        <br>
+        Photo links work once the archive is extracted. Large downloads
+        take a moment to start while the workbooks are built.
+    </div>
 </div>
+
 
 <div class="row g-2 mb-3">
     <div class="col-4">
@@ -69,7 +80,13 @@
     </div>
 </div>
 
-<div class="mb-2 fw-semibold">Per asset</div>
+<button class="btn btn-outline-secondary w-100 mb-3" type="button"
+        data-bs-toggle="collapse" data-bs-target="#perAsset">
+    <i class="bi bi-chevron-expand me-2"></i>Download a single asset
+    ({{ total_assets }})
+</button>
+
+<div class="collapse" id="perAsset">
 <p class="text-muted small">
     Each download is a zip holding that asset's photos and its own spreadsheet.
 </p>
@@ -133,6 +150,7 @@
 <p class="text-center text-muted small mt-3" id="noMatch" style="display:none">
     No assets match that filter.
 </p>
+</div>
 
 <div class="mb-4"></div>
 {% endblock %}
